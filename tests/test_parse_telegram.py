@@ -66,6 +66,17 @@ class AirAlertTest(unittest.TestCase):
                           pd.Timestamp("2026-09-07 06:30"), "air_alert_ua"))
 
 
+class RenamedRaionTest(unittest.TestCase):
+    def test_old_raion_name_still_maps(self):
+        # Новомосковський район was renamed (Самарівський) in 2024; the channel kept the old name.
+        start = START.replace("Харківський район", "Новомосковський район")
+        end = END.replace("Харківський район", "Новомосковський район")
+        posts = pd.DataFrame(parse_tg_page(post(1, "2026-09-01T10:00:00+00:00", start))
+                             + parse_tg_page(post(2, "2026-09-01T10:30:00+00:00", end)))
+        intervals = air_alert_intervals(air_alert_events(posts), {})
+        self.assertEqual(list(intervals["oblast"]), ["Dnipropetrovska oblast"])
+
+
 class RegionMapTest(unittest.TestCase):
     def test_build_region_map(self):
         uk = pd.DataFrame({

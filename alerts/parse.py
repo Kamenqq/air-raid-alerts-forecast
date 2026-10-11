@@ -116,6 +116,9 @@ def load_region_map(path):
 
 _ALERT_START, _ALERT_END = "Повітряна тривога в", "Відбій тривоги в"
 
+# Old raion names the channel still used after official renaming (the CSV only has the new names).
+RENAMED_RAIONS = {"Новомосковський район": "Dnipropetrovska oblast"}  # now Самарівський район
+
 
 def air_alert_events(posts):
     """Posts -> one row per (time, 'start'/'end', region). Threat-only posts are ignored."""
@@ -151,7 +154,7 @@ def air_alert_intervals(events, region_map):
         elif region in open_alerts:
             rows.append((region, open_alerts.pop(region), time))
     df = pd.DataFrame(rows, columns=["region", "start", "end"])
-    df["oblast"] = df["region"].map(region_map)
+    df["oblast"] = df["region"].map({**RENAMED_RAIONS, **region_map})
     df = df.dropna(subset=["oblast"]).reset_index(drop=True)
     df["source"] = "air_alert_ua"
     return df[["oblast", "start", "end", "source"]]
