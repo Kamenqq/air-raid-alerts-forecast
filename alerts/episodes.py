@@ -49,14 +49,15 @@ def merge_episodes(intervals):
 
 
 def daily_counts(episodes, days, data_end):
-    """Episodes starting on each Kyiv day per oblast. Days after the data ends are NaN (unknown)."""
+    """Episodes starting on each Kyiv day per oblast. The last, partly covered day and all later
+    days are NaN (unknown), so a half-day count is never mistaken for a full day."""
     if len(episodes):
         day = to_kyiv(episodes["start"]).dt.normalize()
         counts = pd.crosstab(day.to_numpy(), episodes["oblast"].to_numpy())
     else:
         counts = pd.DataFrame()
     counts = counts.reindex(index=days, columns=OBLASTS, fill_value=0).astype(float)
-    counts.loc[counts.index > kyiv_day(data_end)] = np.nan
+    counts.loc[counts.index >= kyiv_day(data_end)] = np.nan
     counts.index.name, counts.columns.name = "day", None
     return counts
 

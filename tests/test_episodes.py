@@ -57,9 +57,10 @@ class EpisodesTest(unittest.TestCase):
             ("Kyiv City", "2026-07-01 20:30", "2026-07-01 20:40"),  # 23:30 Kyiv on 1 July
         ])
         days = pd.date_range("2026-07-01", "2026-07-04")
-        daily = daily_counts(eps, days, data_end=T("2026-07-02 12:00"))
+        daily = daily_counts(eps, days, data_end=T("2026-07-03 12:00"))
         self.assertEqual(list(daily["Kyiv City"].iloc[:2]), [1.0, 1.0])
-        self.assertTrue(np.isnan(daily.loc["2026-07-03", "Kyiv City"]))  # after data end
+        self.assertTrue(np.isnan(daily.loc["2026-07-03", "Kyiv City"]))  # last day only partly covered
+        self.assertTrue(np.isnan(daily.loc["2026-07-04", "Kyiv City"]))  # after data end
         self.assertEqual(daily.loc["2026-07-01", "Lvivska oblast"], 0.0)
         starts = episode_starts(eps)
         self.assertEqual(sorted(zip(starts["day"], starts["hour"])),
