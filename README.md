@@ -1,5 +1,7 @@
 # Air raid alerts forecast — Ukraine
 
+[![run](https://github.com/Kamenqq/air-raid-alerts-forecast/actions/workflows/ci.yml/badge.svg)](https://github.com/Kamenqq/air-raid-alerts-forecast/actions/workflows/ci.yml)
+
 A Python app that forecasts, **for each of 24 oblasts and each of the next 1–7 days**:
 
 - **how many air raid alerts** will start that day;
@@ -19,18 +21,19 @@ python3 run.py            # Windows: python run.py
 
 The first run creates a private environment in `.venv` and installs pandas, numpy, scikit-learn and matplotlib
 (needs internet, ~1 minute). Then it runs the 28-day evaluation on the data snapshot in the repo (~20 seconds),
-prints a 7-day forecast and writes `reports/report.html`.
+prints a 7-day forecast and writes the outputs to the `reports/` folder (`report.html`, `backtest.csv`,
+`forecast_<date>.csv`; the folder is created by the run and not stored in git).
 
 | Command | What it does |
 |---|---|
 | `python3 run.py` | Evaluation + HTML report + 7-day forecast from the last data day |
-| `python3 run.py --start 2026-10-01 --days 3` | Forecast from any day (2026-01-01 … last data day), 1–7 days. For past days the CSV also shows what actually happened |
+| `python3 run.py --start 2026-10-01 --days 3` | Forecast only (no evaluation, report not updated) from any day (2026-01-01 … last data day), 1–7 days → `reports/forecast_<date>.csv`. For past days the CSV also shows what actually happened |
 | `python3 run.py --fresh` | Downloads the latest data first (repo CSVs + new Telegram posts), then the same |
-| `python3 run.py test` | Runs the 48 unit tests |
+| `python3 run.py test` | Runs the 52 unit tests |
 
 Requirements: Python 3.9+ on macOS, Linux or Windows. Fallback if `.venv` cannot be created
 (e.g. Debian/Ubuntu without `python3-venv`): `pip install -r requirements.txt`, then `python -m alerts.main`.
-CI runs the tests and the full app on Ubuntu, macOS and Windows with Python 3.9 and 3.13.
+CI runs the tests and the full app on Ubuntu, macOS and Windows with Python 3.9 and 3.13 (all green).
 
 Example output (expected alerts | hours expected to hold half of them, Kyiv time):
 
@@ -59,9 +62,11 @@ Average error in alerts per oblast per day (MAE, lower is better), over 4,704 fo
 - The count model **ties the "average of the last 7 days" baseline** (skill ≈ 0%): slightly better 1–3 days ahead,
   slightly worse 4–6 days ahead. Both clearly beat "same weekday last week". Bias −0.09 alerts/day (almost none).
   Daily alert counts behave mostly like a persistent level; recent history explains most of what is predictable.
-- **"Half of the alerts" windows held 49% of real alerts** (they promise 50% — well calibrated), but they are wide:
-  **9.8 hours on average**. A randomly placed window of the same length would hold about 41%.
+- **"Half of the alerts" windows held 49% of real alerts** but are wide: **9.8 hours on average**. A randomly
+  placed window of the same length would hold about 41%. Windows are whole hours, so on average they promise
+  52% (not exactly 50%) — they are slightly over-confident, by about 3 points.
 - **Top-3 hours** caught 15% of alerts (a random guess: 12.5%) — barely better than random.
+- These two "when" numbers are measured for 1 day ahead; for 7 days ahead they are 48% and 15%.
 - Per oblast: best vs baseline Dnipropetrovska (+11%) and Kyivska (+8%); worst Kyiv City (−33%).
 
 ## How it works
@@ -108,13 +113,17 @@ Telegram data comes from the public web preview (`t.me/s/<channel>`); no login o
 
 - The target is eTryvoga data only. A first version combined all sources, but the official CSV and `air_alert_ua`
   stopped on 2026-09-07, so the target changed meaning between training and testing (−16% skill, −0.57 bias).
-  Using one consistent source fixed that; the other sources are kept as checks.
+  Using one consistent source fixed that; the other sources are kept as checks. **Honest caveat:** this choice was
+  made after seeing results on the same 28 test days, so those days are not fully untouched (the reason for the
+  change — the target changing meaning on 2026-09-07 — stands on its own, but the selection was not blind).
 - `air_alert_ua` and the official CSV both have an outage on 2026-08-30 … 09-01.
 - Since July 2026 eTryvoga records far more alerts in Lviv and Volyn than the official data (cause unknown).
 - Telegram keyword matching is approximate (e.g. "дніпр" matches the city and the river); posts may have been
   edited after publication and only the final text is visible.
 - The live repo updates once a day (~05:00 UTC); this delay is not simulated in the backtest.
 - One 28-day test period: results on another period may differ.
+- With the newest numpy (Python 3.13) pandas date arithmetic prints a "deprecated" warning; the app works, but a
+  future numpy release could break it — CI would show it.
 
 ## Project structure
 
@@ -122,13 +131,15 @@ Telegram data comes from the public web preview (`t.me/s/<channel>`); no login o
 run.py                one-command launcher (standard library only)
 alerts/               config, parse, sources, snapshot, episodes, features, model, evaluate, report, main
 data/snapshot/        frozen data used by the default run; data/region_map.csv (Ukrainian raion → oblast)
-tests/                48 unit tests (python3 run.py test)
+tests/                52 unit tests (python3 run.py test)
 docs/superpowers/     design spec and implementation plan
-.claude/agents/       project agents used for independent checks (leakage, reproducibility, data)
+.claude/agents/       project agents: leakage-auditor, repro-tester, data-checker, interview-coach
 ```
 
 ## How this was built
 
 With AI as the main engineering tool (Claude Code): requirements and design were agreed step by step
 (`docs/superpowers/specs/`), turned into a test-first implementation plan (`docs/superpowers/plans/`), and built
-one task at a time with risk checks after each task. The full conversation log is part of the submission.
+one task at a time with risk checks after each task, then independently checked by a leakage-audit agent
+(no leakage found, verified on 8 real forecast days) and a reproducibility agent (fresh clone → run). The full
+conversation log is submitted separately with the application.

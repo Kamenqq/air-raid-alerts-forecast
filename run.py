@@ -7,6 +7,7 @@ then runs the app inside it:
     python3 run.py snapshot    # maintainer only: rebuild data/snapshot (slow, uses the network)
 """
 import os
+import shutil
 import subprocess
 import sys
 import venv
@@ -29,6 +30,7 @@ def ensure_env():
         try:
             venv.EnvBuilder(with_pip=True).create(VENV)
         except Exception as error:  # e.g. Debian/Ubuntu without the python3-venv package
+            shutil.rmtree(VENV, ignore_errors=True)  # a half-made .venv would break every later run
             sys.exit(
                 f"Could not create .venv ({error}).\n"
                 "Fix: install your system's venv package (Debian/Ubuntu: sudo apt install python3-venv),\n"
@@ -38,8 +40,12 @@ def ensure_env():
     if not STAMP.exists() or STAMP.read_text() != wanted:
         print("Installing libraries from requirements.txt (first run only, needs internet)...")
         pip = [str(python), "-m", "pip", "install", "--disable-pip-version-check", "-q"]
-        subprocess.check_call(pip + ["--upgrade", "pip"])
-        subprocess.check_call(pip + ["-r", str(REQUIREMENTS)])
+        try:
+            subprocess.check_call(pip + ["--upgrade", "pip"])
+            subprocess.check_call(pip + ["-r", str(REQUIREMENTS)])
+        except subprocess.CalledProcessError:
+            sys.exit("Installing the libraries failed (see pip's message above). Check the internet connection "
+                     "and run the same command again, or install them yourself: pip install -r requirements.txt")
         STAMP.write_text(wanted)
     return python
 

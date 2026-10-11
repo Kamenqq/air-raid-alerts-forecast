@@ -67,3 +67,11 @@ class ConsoleTest(unittest.TestCase):
             print("Backtest: 2026-09-13 → 2026-10-10 | 16:00–21:00 | —")
             console.flush()
         self.assertTrue(raw.getvalue().startswith(b"Backtest: 2026-09-13 ? 2026-10-10"))
+
+
+class EmptyStartTest(unittest.TestCase):
+    def test_empty_start_is_an_error_not_a_full_run(self):
+        from alerts.main import main
+        with self.assertRaises(SystemExit) as ctx:
+            main(["--start", ""])
+        self.assertIn("YYYY-MM-DD", str(ctx.exception.code))

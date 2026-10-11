@@ -28,9 +28,12 @@ def make_console_safe():
 
 def parse_start(text):
     try:
-        return pd.Timestamp(pd.to_datetime(text, format="%Y-%m-%d")).normalize()
+        day = pd.to_datetime(text, format="%Y-%m-%d")
     except (ValueError, TypeError):
-        raise SystemExit(f"--start must be a date like 2026-10-05 (YYYY-MM-DD), got: {text}")
+        day = pd.NaT
+    if pd.isna(day):  # e.g. "" gives NaT instead of an error
+        raise SystemExit(f"--start must be a date like 2026-10-05 (YYYY-MM-DD), got: {text!r}")
+    return pd.Timestamp(day).normalize()
 
 
 def check_start(start, end_day):
@@ -125,7 +128,7 @@ def run_evaluation(inputs, state):
     last_full_day = state["end_day"] - pd.Timedelta(days=1)
     days = test_period(last_full_day)
     explore_end = days[0] - pd.Timedelta(days=C.MAX_LEAD - 1)  # earliest test forecast time
-    print(f"Backtest: {days[0].date()} → {days[-1].date()} (retraining for every forecast day)...")
+    print(f"Backtest: {days[0].date()} to {days[-1].date()} (retraining for every forecast day)...")
     bt = backtest(rows, days)
     bt.to_csv(C.REPORTS_DIR / "backtest.csv", index=False)
     overall, by_lead = mae_table(bt), mae_table(bt, "lead_days")
@@ -135,7 +138,7 @@ def run_evaluation(inputs, state):
     coverage, window_hours = window_coverage(starts, days)
     summary = (f"On {days[0].date()}–{days[-1].date()} the model misses by {overall.loc[0, 'model']:.2f} alerts per "
                f"oblast-day on average (best baseline: {overall.loc[0, ['b1', 'b2']].min():.2f}; skill "
-               f"{overall.loc[0, 'skill_vs_best']:+.0%}). Bias {model_bias:+.2f} alerts/day. "
+               f"{round(overall.loc[0, 'skill_vs_best'], 2) or 0.0:+.0%}). Bias {model_bias:+.2f} alerts/day. "
                f"{peak:.0%} of alerts started in the predicted top-3 hours (random guess: 12.5%). "
                f"The predicted 'half of the alerts' windows ({window_hours:.1f} h long on average) "
                f"held {coverage:.0%} of real alerts (they promise 50%; a randomly placed window of the same "
@@ -189,7 +192,7 @@ def main(argv=None):
     parser.add_argument("--fresh", action="store_true", help="download the latest data first (slow)")
     args = parser.parse_args(argv)
     make_console_safe()
-    start = parse_start(args.start) if args.start else None
+    start = parse_start(args.start) if args.start is not None else None  # "" is an invalid date, not "absent"
     inputs = load_inputs(args.fresh)
     state = build(inputs)
     if start is None:
