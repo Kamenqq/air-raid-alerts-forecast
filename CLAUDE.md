@@ -61,6 +61,9 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
   spec, test-driven-development for leakage tests, systematic-debugging on bugs, verification-before-completion
   before saying "done", `/code-review` + `leakage-auditor` after each feature, `repro-tester` per milestone.
 - Core decisions stay in this main conversation (it is the submitted AI log); agents do checks and reviews.
+- **Build mode (agreed): native execution of the plan, one task at a time.** After each task: test its
+  risks, then report them to the user with concrete commands the user can run to check the work themselves.
+  Wait for the user before starting the next task.
 
 ## Project agents (`.claude/agents/`)
 Loaded only when a session starts; in the session that created them, run their instructions via a
