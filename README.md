@@ -13,6 +13,8 @@ moment a forecast is made. Built for the KSE Agentic AI School (Stage 2).
 
 ## Quick start
 
+**New to the command line? Follow the step-by-step guide: [HOW_TO_USE.md](HOW_TO_USE.md).**
+
 ```bash
 git clone https://github.com/Kamenqq/air-raid-alerts-forecast.git
 cd air-raid-alerts-forecast
@@ -26,10 +28,10 @@ prints a 7-day forecast and writes the outputs to the `reports/` folder (`report
 
 | Command | What it does |
 |---|---|
-| `python3 run.py` | Evaluation + HTML report + 7-day forecast from the last data day |
+| `python3 run.py` | Evaluation + HTML report + 7-day forecast from the last data day (`--days N` for fewer days) |
 | `python3 run.py --start 2026-10-01 --days 3` | Forecast only (no evaluation, report not updated) from any day (2026-01-01 … last data day), 1–7 days → `reports/forecast_<date>.csv`. For past days the CSV also shows what actually happened |
 | `python3 run.py --fresh` | Downloads the latest data first (repo CSVs + new Telegram posts), then the same |
-| `python3 run.py test` | Runs the 52 unit tests |
+| `python3 run.py test` | Runs the 53 unit tests |
 
 Requirements: Python 3.9+ on macOS, Linux or Windows. Fallback if `.venv` cannot be created
 (e.g. Debian/Ubuntu without `python3-venv`): `pip install -r requirements.txt`, then `python -m alerts.main`.
@@ -131,7 +133,7 @@ Telegram data comes from the public web preview (`t.me/s/<channel>`); no login o
 run.py                one-command launcher (standard library only)
 alerts/               config, parse, sources, snapshot, episodes, features, model, evaluate, report, main
 data/snapshot/        frozen data used by the default run; data/region_map.csv (Ukrainian raion → oblast)
-tests/                52 unit tests (python3 run.py test)
+tests/                53 unit tests (python3 run.py test)
 docs/superpowers/     design spec and implementation plan
 .claude/agents/       project agents: leakage-auditor, repro-tester, data-checker, interview-coach
 ```

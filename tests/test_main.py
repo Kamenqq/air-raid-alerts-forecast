@@ -75,3 +75,13 @@ class EmptyStartTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             main(["--start", ""])
         self.assertIn("YYYY-MM-DD", str(ctx.exception.code))
+
+
+class DaysOptionTest(unittest.TestCase):
+    def test_days_also_applies_without_start(self):
+        from unittest import mock
+        import alerts.main as M
+        with mock.patch.object(M, "load_inputs", return_value={}), mock.patch.object(M, "build", return_value={}), \
+                mock.patch.object(M, "run_evaluation") as evaluation:
+            M.main(["--days", "3"])
+        self.assertEqual(evaluation.call_args.args[2], 3)

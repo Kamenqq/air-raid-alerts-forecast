@@ -122,7 +122,7 @@ def save_forecast(fc, start):
     return path
 
 
-def run_evaluation(inputs, state):
+def run_evaluation(inputs, state, n_days=C.MAX_LEAD):
     C.REPORTS_DIR.mkdir(exist_ok=True)
     rows, starts, daily, intervals = state["rows"], state["starts"], state["daily"], inputs["intervals"]
     last_full_day = state["end_day"] - pd.Timedelta(days=1)
@@ -156,7 +156,7 @@ def run_evaluation(inputs, state):
     sources = intervals.groupby("source")["start"].agg(["count", "min", "max"])
 
     fc_start = state["end_day"]
-    fc = forecast(state, fc_start, C.MAX_LEAD)
+    fc = forecast(state, fc_start, n_days)
     save_forecast(fc, fc_start)
     fc_table = fc.pivot(index="oblast", columns="day", values="expected")
 
@@ -196,7 +196,7 @@ def main(argv=None):
     inputs = load_inputs(args.fresh)
     state = build(inputs)
     if start is None:
-        run_evaluation(inputs, state)
+        run_evaluation(inputs, state, args.days)
     else:
         fc = forecast(state, start, args.days)
         print_forecast(fc)
