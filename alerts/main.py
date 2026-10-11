@@ -3,6 +3,7 @@
 Without --start: full evaluation on the last 28 days + HTML report + forecast from the last data day.
 With --start: only the forecast for --days days starting that Kyiv date."""
 import argparse
+import sys
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,14 @@ from .model import predict, train
 from .parse import (air_alert_events, air_alert_intervals, chomu_flags, load_official, load_region_map,
                     load_volunteer, read_posts)
 from .report import bar_chart, figure_html, heatmap, line_chart, table_html, write_report
+
+
+def make_console_safe():
+    """Some Windows consoles use an 8-bit encoding (e.g. cp1252) without characters like '→':
+    print '?' for those instead of crashing."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
 
 
 def parse_start(text):
@@ -179,6 +188,7 @@ def main(argv=None):
     parser.add_argument("--days", type=int, default=C.MAX_LEAD, choices=range(1, C.MAX_LEAD + 1), metavar="1-7")
     parser.add_argument("--fresh", action="store_true", help="download the latest data first (slow)")
     args = parser.parse_args(argv)
+    make_console_safe()
     start = parse_start(args.start) if args.start else None
     inputs = load_inputs(args.fresh)
     state = build(inputs)

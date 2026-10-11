@@ -51,3 +51,19 @@ class TargetTest(unittest.TestCase):
                   "chomu": pd.DataFrame({"id": [], "time": pd.to_datetime([]), "text": []})}
         daily = build(inputs)["daily"]
         self.assertEqual(daily.loc["2025-09-05", "Kyiv City"], 1.0)  # the official alert is not counted
+
+
+class ConsoleTest(unittest.TestCase):
+    def test_printing_on_a_non_unicode_console_does_not_crash(self):
+        # Windows consoles often use cp1252, which has no '→': the app crashed there on CI.
+        import io
+        import sys
+        from unittest import mock
+        from alerts.main import make_console_safe
+        raw = io.BytesIO()
+        console = io.TextIOWrapper(raw, encoding="cp1252")
+        with mock.patch.object(sys, "stdout", console):
+            make_console_safe()
+            print("Backtest: 2026-09-13 → 2026-10-10 | 16:00–21:00 | —")
+            console.flush()
+        self.assertTrue(raw.getvalue().startswith(b"Backtest: 2026-09-13 ? 2026-10-10"))
