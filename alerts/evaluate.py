@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 from .config import OBLASTS, TEST_DAYS
-from .features import hourly_profile
+from .features import hourly_profile, main_window
 from .model import predict, train
 
 
@@ -63,3 +63,21 @@ def naive_check(vol, medians, start, end):
         "MAE, minutes": [(minutes - 30).abs().mean(), (minutes - median).abs().mean()],
         "alerts": [len(real), len(real)],
     })
+
+
+def window_coverage(starts, days):
+    """Share of real alert starts on the test days that fell inside the predicted 'half of the alerts'
+    window (target: about 50%), and the mean window length in hours. Oblasts with no window are skipped."""
+    hits = total = 0
+    lengths = []
+    for day in days:
+        for oblast in OBLASTS:
+            window = main_window(hourly_profile(starts, oblast, day))
+            if window is None:
+                continue
+            start, hours = window
+            lengths.append(hours)
+            real = starts.loc[(starts["oblast"] == oblast) & (starts["day"] == day), "hour"]
+            hits += int(((real - start) % 24 < hours).sum())
+            total += len(real)
+    return (hits / total if total else float("nan"), float(np.mean(lengths)) if lengths else float("nan"))

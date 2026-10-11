@@ -9,8 +9,8 @@ import pandas as pd
 
 from . import config as C
 from .episodes import daily_counts, episode_starts, impute_naive, merge_episodes, naive_medians
-from .evaluate import backtest, bias, mae_table, naive_check, peak_hit_rate, test_period
-from .features import hourly_profile, make_rows, tg_daily
+from .evaluate import backtest, bias, mae_table, naive_check, peak_hit_rate, test_period, window_coverage
+from .features import hourly_profile, main_window, make_rows, tg_daily
 from .model import predict, train
 from .parse import (air_alert_events, air_alert_intervals, chomu_flags, load_official, load_region_map,
                     load_volunteer, read_posts)
@@ -38,6 +38,14 @@ def peak_hours_text(profile):
     return ", ".join(f"{h:02d}:00" for h in sorted(np.argsort(profile)[-3:]))
 
 
+def window_text(window):
+    """(start_hour, hours) -> '16:00–21:00'; None -> '—'."""
+    if window is None:
+        return "—"
+    start, hours = window
+    return f"{start:02d}:00–{(start + hours) % 24:02d}:00"
+
+
 def load_inputs(fresh):
     folder = C.SNAPSHOT_DIR
     if fresh:
@@ -50,13 +58,16 @@ def load_inputs(fresh):
                                     load_region_map(C.REGION_MAP))
     intervals = pd.concat([official, impute_naive(vol, medians), air_alert], ignore_index=True)
     intervals = intervals[intervals["start"] >= C.DATA_START].reset_index(drop=True)
-    return {"intervals": intervals, "vol": vol, "medians": medians,
+    # Target = eTryvoga (volunteer) alerts only: the one source that covers train AND test periods the same way.
+    # Other sources stopped on 2026-09-07; they stay in `intervals` for the data checks in the report.
+    target = intervals[intervals["source"] == "volunteer_csv"].reset_index(drop=True)
+    return {"intervals": intervals, "target": target, "vol": vol, "medians": medians,
             "chomu": read_posts(folder / "tryvoga_chomu_posts.csv")}
 
 
 def build(inputs):
-    episodes = merge_episodes(inputs["intervals"])
-    data_end = inputs["intervals"]["start"].max()
+    episodes = merge_episodes(inputs["target"])
+    data_end = inputs["target"]["start"].max()
     end_day = C.kyiv_day(data_end)
     days = pd.date_range(C.kyiv_day(C.DATA_START), end_day + pd.Timedelta(days=C.MAX_LEAD + 1))
     daily = daily_counts(episodes, days, data_end)
@@ -77,17 +88,18 @@ def forecast(state, start, n_days):
         oblast = C.OBLASTS[row.oblast]
         profile = profiles[oblast]
         record = {"oblast": oblast, "day": row.target_day.date(), "expected": row.expected,
-                  "actual": row.actual, "peak_hours": peak_hours_text(profile)}
+                  "actual": row.actual, "peak_hours": peak_hours_text(profile),
+                  "main_window": window_text(main_window(profile))}
         record.update({f"h{h:02d}": row.expected * profile[h] for h in range(24)})
         records.append(record)
     return pd.DataFrame(records)
 
 
 def print_forecast(fc):
-    cells = fc.assign(cell=fc["expected"].round(1).astype(str) + " (" + fc["peak_hours"] + ")")
+    cells = fc.assign(cell=fc["expected"].round(1).astype(str) + " | " + fc["main_window"])
     table = cells.pivot(index="oblast", columns="day", values="cell")
     with pd.option_context("display.width", 250, "display.max_columns", 10):
-        print("Expected alerts per day (top-3 most likely start hours, Kyiv time):")
+        print("Expected alerts per day | hours expected to hold half of them (Kyiv time):")
         print(table.to_string())
 
 
@@ -111,10 +123,14 @@ def run_evaluation(inputs, state):
     by_oblast = mae_table(bt, "oblast").rename(index=dict(enumerate(C.OBLASTS)))
     peak = peak_hit_rate(starts, days)
     model_bias = bias(bt)
+    coverage, window_hours = window_coverage(starts, days)
     summary = (f"On {days[0].date()}–{days[-1].date()} the model misses by {overall.loc[0, 'model']:.2f} alerts per "
                f"oblast-day on average (best baseline: {overall.loc[0, ['b1', 'b2']].min():.2f}; skill "
                f"{overall.loc[0, 'skill_vs_best']:+.0%}). Bias {model_bias:+.2f} alerts/day. "
-               f"{peak:.0%} of alerts started in the predicted top-3 hours (random guess: 12.5%).")
+               f"{peak:.0%} of alerts started in the predicted top-3 hours (random guess: 12.5%). "
+               f"The predicted 'half of the alerts' windows ({window_hours:.1f} h long on average) "
+               f"held {coverage:.0%} of real alerts (they promise 50%; a randomly placed window of the same "
+               f"length would hold about {window_hours / 24:.0%}).")
     print(summary)
     labels = {"b1": "last-7-days average", "b2": "same weekday last week", "skill_vs_best": "skill vs best baseline"}
     overall, by_lead, by_oblast = (t.rename(columns=labels) for t in (overall, by_lead, by_oblast))
@@ -134,7 +150,9 @@ def run_evaluation(inputs, state):
 
     sections = [
         ("Result in one paragraph", f"<p>{summary}</p>"),
-        ("1. Data", table_html(sources) + "<p class='note'>Alert starts per day by source while air_alert_ua "
+        ("1. Data", "<p class='note'>The forecast target is eTryvoga (volunteer) alerts only; the other "
+         "sources stopped on 2026-09-07 and are shown here as data checks.</p>" + table_html(sources) +
+         "<p class='note'>Alert starts per day by source while air_alert_ua "
          "was still posting (it covers the official CSV outage of 2026-08-29…09-02 if its column is non-zero):</p>"
          + table_html(by_source)),
         ("2. Exploration (training period only)",
@@ -148,7 +166,7 @@ def run_evaluation(inputs, state):
                                 "Average error (MAE) by days ahead", "days ahead", "alerts per oblast-day"))
          + table_html(by_oblast)),
         (f"5. Forecast from {fc_start.date()}", figure_html(heatmap(fc_table, "Expected alerts per day", "alerts"))
-         + table_html(fc[["oblast", "day", "expected", "peak_hours"]].set_index(["oblast", "day"]), 1)),
+         + table_html(fc[["oblast", "day", "expected", "main_window", "peak_hours"]].set_index(["oblast", "day"]), 1)),
     ]
     write_report(C.REPORTS_DIR / "report.html", "Air raid alerts forecast — evaluation", sections)
     print_forecast(fc)

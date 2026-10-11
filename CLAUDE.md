@@ -24,13 +24,17 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
 ## Agreed design (summary)
 - Forecast **per oblast per day, 1–7 days ahead**: number of alerts + top-3 most likely hours (24h profile).
   User picks `--start` and `--days`; `--fresh` downloads the latest data; default run = frozen snapshot.
-- **All sources are equally trustworthy and combined** (no "official" vs "unofficial"): the two Vadimkin repo
-  CSVs + Telegram `air_alert_ua` → alert intervals merged per oblast into episodes. Telegram `tryvoga_chomu`
-  → threat-text features. Luhansk and Crimea excluded (permanent alerts).
+- **Target (user decision 2026-10-12, after an experiment):** eTryvoga (volunteer CSV) alerts only, merged per
+  oblast into episodes. Combining all sources made the target change on 2026-09-07 (the other sources stopped),
+  which caused a -16% skill and -0.57 bias; with the volunteer target: skill ≈ 0%, bias -0.09.
+  The official CSV and `air_alert_ua` are still imported and shown as data checks in the report.
+  Telegram `tryvoga_chomu` → threat-text features. Luhansk and Crimea excluded (permanent alerts).
+- **"When" outputs:** top-3 peak hours, and the **main window** = shortest continuous span of hours (may cross
+  midnight) expected to hold ≥ 50% of the day's alerts. Checked by coverage (target 50%) and mean length.
 - Naive alerts (no end message): end = start + per-oblast median duration (user's revised H6).
 - Count model: `HistGradientBoostingRegressor(loss="poisson")`, retrained for each forecast time, no tuning.
   Baselines: last-7-days mean; same weekday last week. Metrics: MAE, skill vs best baseline, bias,
-  peak-hour hit rate. Test = last 28 full days of the snapshot.
+  peak-hour hit rate, main-window coverage and length. Test = last 28 full days of the snapshot.
 - Prototype philosophy (user): build a first working version, test, then correct. Don't over-engineer
   (DST edge cases, hour-precise data availability). Give heads-ups; don't block on details.
 

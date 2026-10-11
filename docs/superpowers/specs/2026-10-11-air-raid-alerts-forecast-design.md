@@ -1,6 +1,6 @@
 # Air Raid Alerts Forecast — Prototype Design
 
-Date: 2026-10-11 · Status: approved in conversation, awaiting written-spec review
+Date: 2026-10-11 · Status: approved; revised 2026-10-12 (target = volunteer data, main window added — see §10)
 Deadline: Mon 12 Oct 2026, 23:59 Kyiv
 
 ## 1. Goal
@@ -176,3 +176,14 @@ and `python -m unittest`.
 - Lviv/Volyn: eTryvoga records many more alerts than the raion-level file since July 2026 (cause unknown).
 - Telegram text may have been edited after publication.
 - The live repo updates once a day (~05:00 UTC); this lag is not simulated in backtests.
+
+## 10. Revision 2026-10-12 (after the first full run)
+- **Target changed to eTryvoga (volunteer CSV) alerts only.** With all sources combined, the official CSV and
+  air_alert_ua ended on 2026-09-07, so the target meant something different in training (merging absorbed
+  volunteer alerts: ~87 vs ~130 alerts/day nationally) than in the test period. Result: skill -16%, bias -0.57.
+  A throwaway experiment with the volunteer target everywhere gave skill ≈ 0%, bias -0.09; the user chose it.
+  The other sources stay imported for the data checks in report section 1.
+- **New output, "main window":** the shortest continuous span of hours (may cross midnight) expected to hold at
+  least half of the day's alerts, from the same 28-day hourly profile. Evaluated by coverage (share of real
+  alerts inside the window; promised 50%) and mean window length, compared with a random window of the same
+  length (length / 24).

@@ -47,3 +47,14 @@ class EvaluateTest(unittest.TestCase):
         table = naive_check(vol, {"Kyiv City": 40.0}, pd.Timestamp("2026-01-01"), pd.Timestamp("2026-02-01"))
         self.assertEqual(list(table["MAE, minutes"]), [20.0, 10.0])
         self.assertEqual(list(table["alerts"]), [1, 1])
+
+
+class WindowCoverageTest(unittest.TestCase):
+    def test_coverage_and_length(self):
+        from alerts.evaluate import window_coverage
+        history = pd.DataFrame({"oblast": ["Kyiv City"] * 4, "hour": [22, 22, 23, 23],
+                                "day": pd.to_datetime(["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"])})
+        test_day = pd.DataFrame({"oblast": ["Kyiv City"] * 2, "hour": [22, 5], "day": pd.to_datetime(["2026-03-10"] * 2)})
+        coverage, hours = window_coverage(pd.concat([history, test_day], ignore_index=True), pd.DatetimeIndex(["2026-03-10"]))
+        self.assertEqual(coverage, 0.5)  # predicted window 22:00-23:00 (1 hour) catches 1 of 2
+        self.assertEqual(hours, 1.0)

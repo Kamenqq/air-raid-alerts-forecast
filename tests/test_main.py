@@ -29,3 +29,25 @@ class PeakHoursTest(unittest.TestCase):
 
     def test_no_recent_alerts_gives_dash(self):
         self.assertEqual(peak_hours_text(np.full(24, 1 / 24)), "—")
+
+
+class WindowTextTest(unittest.TestCase):
+    def test_text(self):
+        from alerts.main import window_text
+        self.assertEqual(window_text((22, 2)), "22:00–00:00")
+        self.assertEqual(window_text((16, 5)), "16:00–21:00")
+        self.assertEqual(window_text(None), "—")
+
+
+class TargetTest(unittest.TestCase):
+    def test_target_is_volunteer_only(self):
+        from alerts.main import build
+        days = pd.date_range("2025-09-01", periods=40)
+        vol = pd.DataFrame({"oblast": "Kyiv City", "start": days + pd.Timedelta(hours=10),
+                            "end": days + pd.Timedelta(hours=10, minutes=30), "source": "volunteer_csv"})
+        official = pd.DataFrame({"oblast": ["Kyiv City"], "start": [pd.Timestamp("2025-09-05 02:00")],
+                                 "end": [pd.Timestamp("2025-09-05 03:00")], "source": ["official_csv"]})
+        inputs = {"target": vol, "intervals": pd.concat([vol, official], ignore_index=True),
+                  "chomu": pd.DataFrame({"id": [], "time": pd.to_datetime([]), "text": []})}
+        daily = build(inputs)["daily"]
+        self.assertEqual(daily.loc["2025-09-05", "Kyiv City"], 1.0)  # the official alert is not counted

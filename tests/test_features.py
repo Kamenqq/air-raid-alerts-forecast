@@ -77,3 +77,21 @@ class ProfileTest(unittest.TestCase):
         starts = pd.DataFrame({"oblast": [], "hour": [], "day": pd.to_datetime([])})
         profile = hourly_profile(starts, "Zakarpatska oblast", pd.Timestamp("2026-04-10"))
         np.testing.assert_allclose(profile, np.full(24, 1 / 24))
+
+
+class MainWindowTest(unittest.TestCase):
+    def test_concentrated_alerts_give_a_short_window(self):
+        from alerts.features import main_window
+        profile = np.zeros(24)
+        profile[[22, 23, 10]] = [0.4, 0.3, 0.3]
+        self.assertEqual(main_window(profile), (22, 2))  # 22:00-00:00 holds 70%
+
+    def test_window_can_cross_midnight(self):
+        from alerts.features import main_window
+        profile = np.zeros(24)
+        profile[[23, 0, 12]] = [0.3, 0.3, 0.4]
+        self.assertEqual(main_window(profile), (23, 2))  # 23:00-01:00 holds 60%, beats 12:00 alone (40%)
+
+    def test_flat_profile_has_no_window(self):
+        from alerts.features import main_window
+        self.assertIsNone(main_window(np.full(24, 1 / 24)))

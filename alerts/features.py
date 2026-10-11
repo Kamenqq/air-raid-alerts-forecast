@@ -62,3 +62,16 @@ def hourly_profile(starts, oblast, t0, window=28):
                     & (starts["day"] >= t0 - pd.Timedelta(days=window))]
     counts = np.bincount(recent["hour"].to_numpy(dtype=int), minlength=24).astype(float)
     return counts / counts.sum() if counts.sum() else np.full(24, 1 / 24)
+
+
+def main_window(profile, share=0.5):
+    """Shortest continuous span of hours (may cross midnight) expected to hold at least `share`
+    of the oblast's alerts; among equally short spans, the one holding the most.
+    Returns (start_hour, hours), or None for a flat profile (no recent alerts)."""
+    if np.allclose(profile, profile[0]):
+        return None
+    doubled = np.concatenate([profile, profile])  # lets a window run past midnight
+    for hours in range(1, 25):
+        sums = np.array([doubled[start:start + hours].sum() for start in range(24)])
+        if sums.max() >= share - 1e-9:
+            return int(sums.argmax()), hours
