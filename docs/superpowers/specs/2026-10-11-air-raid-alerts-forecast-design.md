@@ -23,7 +23,7 @@ repo's daily update lag, tracking Telegram edit times.
 |---|---|
 | `python3 run.py` | Creates `.venv` if missing, installs `requirements.txt`, then runs the **reproducible mode**: loads the frozen snapshot, evaluates on the test period, writes `reports/report.html` + CSVs, and forecasts 7 days starting 2026-10-10 (the day the snapshot ends). |
 | `python3 run.py --start 2026-10-01 --days 3` | Forecast made at 00:00 Kyiv of `--start`, for `--days` days (1–7, default 7). Prints a table and writes `reports/forecast_<start>.csv` + heatmap. |
-| `python3 run.py --fresh` | Downloads the latest repo CSVs and recent Telegram posts first, then the same as above; default `--start` = tomorrow (Kyiv). |
+| `python3 run.py --fresh` | Downloads the latest repo CSVs and recent Telegram posts first, then the same as above. Default `--start` (both modes) = the last, partly covered day in the data, so features only use complete days. |
 
 Rules for `--start`:
 - before 2026-01-01 → error (needs ≥ 1 month of training examples and 28 days of feature history);
