@@ -50,6 +50,13 @@ def peak_hours_text(profile):
     return ", ".join(f"{h:02d}:00" for h in sorted(np.argsort(profile)[-3:]))
 
 
+def skill_text(skill):
+    """'+12%'; tiny values print as '+0%' (not '-0%'); an undefined skill prints 'n/a'."""
+    if pd.isna(skill):
+        return "n/a"
+    return f"{0.0 if abs(skill) < 0.005 else skill:+.0%}"
+
+
 def window_text(window):
     """(start_hour, hours) -> '16:00–21:00'; None -> '—'."""
     if window is None:
@@ -70,16 +77,16 @@ def load_inputs(fresh):
                                     load_region_map(C.REGION_MAP))
     intervals = pd.concat([official, impute_naive(vol, medians), air_alert], ignore_index=True)
     intervals = intervals[intervals["start"] >= C.DATA_START].reset_index(drop=True)
-    # Target = eTryvoga (volunteer) alerts only: the one source that covers train AND test periods the same way.
-    # Other sources stopped on 2026-09-07; they stay in `intervals` for the data checks in the report.
-    target = intervals[intervals["source"] == "volunteer_csv"].reset_index(drop=True)
-    return {"intervals": intervals, "target": target, "vol": vol, "medians": medians,
+    return {"intervals": intervals, "vol": vol, "medians": medians,
             "chomu": read_posts(folder / "tryvoga_chomu_posts.csv")}
 
 
 def build(inputs):
-    episodes = merge_episodes(inputs["target"])
-    data_end = inputs["target"]["start"].max()
+    # Target = eTryvoga (volunteer) alerts only: the one source that covers train AND test periods the same way.
+    # Other sources stopped on 2026-09-07; they stay in inputs["intervals"] for the data checks in the report.
+    target = inputs["intervals"][inputs["intervals"]["source"] == "volunteer_csv"]
+    episodes = merge_episodes(target)
+    data_end = target["start"].max()
     end_day = C.kyiv_day(data_end)
     days = pd.date_range(C.kyiv_day(C.DATA_START), end_day + pd.Timedelta(days=C.MAX_LEAD + 1))
     daily = daily_counts(episodes, days, data_end)
@@ -118,7 +125,7 @@ def print_forecast(fc):
 def save_forecast(fc, start):
     C.REPORTS_DIR.mkdir(exist_ok=True)
     path = C.REPORTS_DIR / f"forecast_{start.date()}.csv"
-    fc.round(3).to_csv(path, index=False)
+    fc.round(3).to_csv(path, index=False, encoding="utf-8-sig")  # the BOM makes Excel read it as UTF-8
     return path
 
 
@@ -138,7 +145,7 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD):
     coverage, window_hours = window_coverage(starts, days)
     summary = (f"On {days[0].date()}–{days[-1].date()} the model misses by {overall.loc[0, 'model']:.2f} alerts per "
                f"oblast-day on average (best baseline: {overall.loc[0, ['b1', 'b2']].min():.2f}; skill "
-               f"{round(overall.loc[0, 'skill_vs_best'], 2) or 0.0:+.0%}). Bias {model_bias:+.2f} alerts/day. "
+               f"{skill_text(overall.loc[0, 'skill_vs_best'])}). Bias {model_bias:+.2f} alerts/day. "
                f"{peak:.0%} of alerts started in the predicted top-3 hours (random guess: 12.5%). "
                f"The predicted 'half of the alerts' windows ({window_hours:.1f} h long on average) "
                f"held {coverage:.0%} of real alerts (they promise 50%; a randomly placed window of the same "

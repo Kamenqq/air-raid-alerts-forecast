@@ -65,14 +65,17 @@ Per oblast: collect intervals from all sources, sort by start, merge any that ov
 - Heads-up (not handled in the prototype): in frontline oblasts raion alerts overlap almost continuously,
   so episodes become long and counts low. Fallback if misleading: "hours under alert per day".
 
-### 3.3 As-of rule (leakage protection)
-One function `available_at(data, T)` returns only:
-- alert intervals with `started_at < T`; if `finished_at > T` the interval is clipped at T (we know an alert
-  started, not when it will end). Daily counts and hourly profiles use starts only, so for days before T they
-  are identical to full-data values — the leakage test (§8) verifies this;
-- Telegram posts with publish time `< T` (we only see their final edited text — documented risk).
-
-All features, baselines, profiles and naive-alert medians are computed from `available_at(data, T)`.
+### 3.3 As-of rule (leakage protection) — as implemented
+There is no single `available_at()` function; the rule is enforced in two places and proven by a test:
+- **Features** (`features.make_rows`): every statistic for forecast day t0 is shifted with `shift(1)` (or `shift(7)`
+  read at the target day D = t0 + k − 1 ≤ t0 + 6), so it only uses Kyiv days before t0. Daily counts and hourly
+  profiles use alert **starts**, so a day before t0 is complete at 00:00 Kyiv of t0; the last, partly covered data
+  day is NaN. Telegram counts use posts published before t0.
+- **Training** (`model.training_rows`): only rows whose target day is before t0; the model is retrained per t0.
+- **Proof** (`tests/test_features.py::LeakageTest`): `episodes.clip_as_of(intervals, T)` builds the data as it was
+  known at T (alerts started before T, running alerts cut at T); features and profiles from that data must equal the
+  ones from the full data. `clip_as_of` and `config.kyiv_day_start_utc` exist for this proof.
+- Residual risk: Telegram posts may have been edited after publication (only the final text is visible).
 
 ## 4. Forecast definition
 
@@ -83,7 +86,7 @@ A forecast is made at **T = 00:00 Kyiv of the start day**. For lead *k* ∈ 1…
 Model: scikit-learn `HistGradientBoostingRegressor(loss="poisson", random_state=0)`, default settings,
 oblast as a categorical feature. No tuning (avoids tuning on the test period).
 
-Features for (oblast *o*, forecast time *T*, lead *k*), all from `available_at(data, T)`:
+Features for (oblast *o*, forecast time *T*, lead *k*), all known before 00:00 Kyiv of t0 (see §3.3):
 - calendar: `lead_days` (k), `weekday` of D;
 - `oblast` (categorical);
 - own history: episodes on the day before T; mean per day over the last 7 and 28 days;
@@ -142,7 +145,7 @@ alerts/
   sources.py          download repo CSVs; fetch Telegram preview pages (urllib, html.parser, 2 s delay)
   parse.py            CSV cleaning, air_alert_ua post parser, tryvoga_chomu text cleaning + keyword counts
   episodes.py         naive-end imputation, region mapping, merging into episodes, daily counts
-  features.py         available_at(), feature rows, hourly profiles, baselines
+  features.py         feature rows (shift-based as-of rule), hourly profiles
   model.py            train (with cutoff) / predict
   evaluate.py         test protocol and metrics
   report.py           HTML report + charts

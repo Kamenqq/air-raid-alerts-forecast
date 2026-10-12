@@ -133,3 +133,20 @@ class ChomuTest(unittest.TestCase):
                                           "text": list(cases)}))
         for i, oblast in enumerate(cases.values()):
             self.assertEqual(flags.loc[i, f"m_{oblast}"], 1, list(cases)[i])
+
+
+class RedactTest(unittest.TestCase):
+    def test_redact_removes_payment_and_personal_details(self):
+        from alerts.parse import redact
+        text = ("Підтримати канал: 4441 1144 2233 4455, https://send.monobank.ua/jar/abc, адмін @some_admin, "
+                "пошта info@example.gov.ua\n❗️Шахед на Київщину")
+        out = redact(text)
+        for secret in ("4441", "monobank", "@some_admin", "info@example"):
+            self.assertNotIn(secret, out)
+        self.assertIn("Шахед на Київщину", out)
+
+    def test_redact_keeps_keyword_flags(self):
+        from alerts.parse import redact
+        texts = ["Шахед на Київщину https://t.me/x 4441114422334455", "Балістика на Київ! @user"]
+        posts = pd.DataFrame({"time": pd.to_datetime(["2026-09-01 10:00"] * 2), "text": texts})
+        pd.testing.assert_frame_equal(chomu_flags(posts), chomu_flags(posts.assign(text=posts["text"].map(redact))))

@@ -51,3 +51,40 @@ class LauncherTest(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 run.ensure_env()
         self.assertIn("internet", str(ctx.exception.code))
+
+    def test_ctrl_c_during_setup_removes_half_made_venv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            venv_dir = Path(tmp) / ".venv"
+
+            def interrupted_create(builder, env_dir):
+                (Path(env_dir) / "bin").mkdir(parents=True)
+                (Path(env_dir) / "bin" / "python").touch()
+                raise KeyboardInterrupt
+
+            with mock.patch.object(run, "VENV", venv_dir), \
+                    mock.patch.object(run, "venv_python", return_value=venv_dir / "bin" / "python"), \
+                    mock.patch("venv.EnvBuilder.create", interrupted_create):
+                with self.assertRaises(KeyboardInterrupt):
+                    run.ensure_env()
+            self.assertFalse(venv_dir.exists())
+
+    def test_venv_is_rebuilt_clean(self):
+        # clear=True wipes a stale install stamp, so a rebuilt .venv always gets its libraries again
+        options = {}
+
+        class FakeBuilder:
+            def __init__(self, **kwargs):
+                options.update(kwargs)
+
+            def create(self, env_dir):
+                raise OSError("stop here")
+
+        missing = mock.Mock()
+        missing.exists.return_value = False
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(run, "VENV", Path(tmp) / ".venv"), \
+                mock.patch.object(run, "venv_python", return_value=missing), \
+                mock.patch("venv.EnvBuilder", FakeBuilder):
+            with self.assertRaises(SystemExit):
+                run.ensure_env()
+        self.assertTrue(options.get("clear"))

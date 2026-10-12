@@ -63,6 +63,20 @@ def parse_tg_page(page_html):
     return posts
 
 
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_LINK = re.compile(r"https?://\S+|\bt\.me/\S+|\bwww\.\S+")
+_HANDLE = re.compile(r"(?<!\w)@\w{3,}")
+_CARD = re.compile(r"(?<!\d)(?:\d[ -]?){15}\d(?!\d)")
+
+
+def redact(text):
+    """Remove payment cards, links, emails and @usernames from post text before it is stored
+    (the model only needs the place and threat words; the published repo must not carry these)."""
+    for pattern, placeholder in ((_EMAIL, "[email]"), (_LINK, "[link]"), (_HANDLE, "[user]"), (_CARD, "[card]")):
+        text = pattern.sub(placeholder, text)
+    return text
+
+
 def read_posts(path):
     df = pd.read_csv(path)
     df["time"] = pd.to_datetime(df["time"])

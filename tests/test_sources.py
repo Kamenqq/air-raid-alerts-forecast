@@ -50,3 +50,29 @@ class DownloadTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(sources, "get_bytes", return_value=payload):
             dest = sources.download("https://example.invalid/x.csv", Path(tmp) / "sub" / "x.csv")
             self.assertEqual(dest.read_bytes(), payload)
+
+
+class RetryTest(unittest.TestCase):
+    def test_cut_off_download_is_retried(self):
+        import http.client
+        calls = []
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b"ok"
+
+        def flaky_urlopen(request, timeout):
+            calls.append(1)
+            if len(calls) < 3:
+                raise http.client.IncompleteRead(b"partial")
+            return Response()
+
+        with mock.patch("urllib.request.urlopen", flaky_urlopen), mock.patch("time.sleep"):
+            self.assertEqual(sources.get_bytes("https://example.invalid/x"), b"ok")
+        self.assertEqual(len(calls), 3)

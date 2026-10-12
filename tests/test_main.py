@@ -47,7 +47,7 @@ class TargetTest(unittest.TestCase):
                             "end": days + pd.Timedelta(hours=10, minutes=30), "source": "volunteer_csv"})
         official = pd.DataFrame({"oblast": ["Kyiv City"], "start": [pd.Timestamp("2025-09-05 02:00")],
                                  "end": [pd.Timestamp("2025-09-05 03:00")], "source": ["official_csv"]})
-        inputs = {"target": vol, "intervals": pd.concat([vol, official], ignore_index=True),
+        inputs = {"intervals": pd.concat([vol, official], ignore_index=True),  # build() must filter it
                   "chomu": pd.DataFrame({"id": [], "time": pd.to_datetime([]), "text": []})}
         daily = build(inputs)["daily"]
         self.assertEqual(daily.loc["2025-09-05", "Kyiv City"], 1.0)  # the official alert is not counted
@@ -85,3 +85,46 @@ class DaysOptionTest(unittest.TestCase):
                 mock.patch.object(M, "run_evaluation") as evaluation:
             M.main(["--days", "3"])
         self.assertEqual(evaluation.call_args.args[2], 3)
+
+
+
+def small_state():
+    """Kyiv City has 1-3 alerts every day from 2025-11-01 to 2026-01-20; other oblasts have none."""
+    from alerts.main import build
+    rng = np.random.RandomState(0)
+    rows = []
+    for day in pd.date_range("2025-11-01", "2026-01-20"):
+        for n in range(rng.randint(1, 4)):
+            start = day + pd.Timedelta(hours=8 + 3 * n)
+            rows.append(("Kyiv City", start, start + pd.Timedelta(minutes=20), "volunteer_csv"))
+    intervals = pd.DataFrame(rows, columns=["oblast", "start", "end", "source"])
+    return build({"intervals": intervals, "chomu": pd.DataFrame({"id": [], "time": pd.to_datetime([]), "text": []})})
+
+
+class ForecastCutoffTest(unittest.TestCase):
+    def test_past_forecast_trains_only_on_days_before_start(self):
+        from unittest import mock
+        import alerts.main as M
+        from alerts import model as model_module
+        start = pd.Timestamp("2026-01-10")
+        with mock.patch.object(M, "train", side_effect=model_module.train) as spy:
+            fc = M.forecast(small_state(), start, 3)
+        self.assertEqual(spy.call_args.kwargs["before_day"], start)
+        self.assertTrue(fc["actual"].notna().all())  # a past start: the real outcome is shown next to it
+
+
+class SmallFixesTest(unittest.TestCase):
+    def test_skill_text(self):
+        from alerts.main import skill_text
+        self.assertEqual(skill_text(-0.001), "+0%")
+        self.assertEqual(skill_text(0.123), "+12%")
+        self.assertEqual(skill_text(float("nan")), "n/a")
+
+    def test_forecast_csv_opens_in_excel(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        import alerts.main as M
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(M.C, "REPORTS_DIR", Path(tmp)):
+            path = M.save_forecast(pd.DataFrame({"main": ["16:00–21:00"]}), pd.Timestamp("2026-10-12"))
+            self.assertTrue(path.read_bytes().startswith(b"\xef\xbb\xbf"))  # UTF-8 mark Excel needs

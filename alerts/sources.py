@@ -1,11 +1,12 @@
 """Network access: repo CSV downloads and Telegram public-preview pagination."""
+import http.client
 import time
 import urllib.request
 
 import pandas as pd
 
 from .config import FRESH_DIR, REPO_RAW, SNAPSHOT_DIR
-from .parse import parse_tg_page, read_posts
+from .parse import parse_tg_page, read_posts, redact
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
@@ -15,7 +16,7 @@ def get_bytes(url, retries=3, timeout=30):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=timeout) as response:
                 return response.read()
-        except OSError as error:
+        except (OSError, http.client.HTTPException) as error:  # incl. a transfer cut off midway
             if attempt == retries:
                 raise RuntimeError(f"Download failed after {retries} attempts: {url} ({error})")
             time.sleep(5 * attempt)
@@ -63,6 +64,7 @@ def refresh():
     for channel in ("air_alert_ua", "tryvoga_chomu"):
         old = read_posts(SNAPSHOT_DIR / f"{channel}_posts.csv")
         new = fetch_channel(channel, since=old["time"].max(), after_id=int(old["id"].max()))
+        new["text"] = new["text"].map(redact)
         print(f"{channel}: {len(new)} new posts")
         pd.concat([old, new]).drop_duplicates("id").to_csv(FRESH_DIR / f"{channel}_posts.csv", index=False)
     return FRESH_DIR

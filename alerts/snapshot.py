@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from .config import AIR_ALERT_SINCE, CHOMU_SINCE, DATA_START, REGION_MAP, REPO_RAW, SNAPSHOT_DIR
-from .parse import build_region_map
+from .parse import build_region_map, redact
 from .sources import download, fetch_channel
 
 
@@ -26,6 +26,7 @@ def build_snapshot():
             print(f"{name}: {int((started >= DATA_START).sum())} rows kept")
     for channel, since in (("air_alert_ua", AIR_ALERT_SINCE), ("tryvoga_chomu", CHOMU_SINCE)):
         posts = fetch_channel(channel, since)
+        posts["text"] = posts["text"].map(redact)
         posts.to_csv(SNAPSHOT_DIR / f"{channel}_posts.csv", index=False)
         print(f"{channel}: {len(posts)} posts saved ({posts['time'].min()} → {posts['time'].max()})")
 

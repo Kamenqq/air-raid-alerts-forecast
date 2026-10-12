@@ -28,9 +28,11 @@ def ensure_env():
     if not python.exists():
         print("Creating a private environment in .venv (first run only)...")
         try:
-            venv.EnvBuilder(with_pip=True).create(VENV)
-        except Exception as error:  # e.g. Debian/Ubuntu without the python3-venv package
+            venv.EnvBuilder(with_pip=True, clear=True).create(VENV)  # clear: no stale install stamp survives
+        except BaseException as error:  # incl. Ctrl-C; e.g. Debian/Ubuntu without the python3-venv package
             shutil.rmtree(VENV, ignore_errors=True)  # a half-made .venv would break every later run
+            if isinstance(error, KeyboardInterrupt):
+                raise
             sys.exit(
                 f"Could not create .venv ({error}).\n"
                 "Fix: install your system's venv package (Debian/Ubuntu: sudo apt install python3-venv),\n"
