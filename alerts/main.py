@@ -1,9 +1,11 @@
 """python3 run.py [--start YYYY-MM-DD] [--days N] [--fresh]
 
 Without --start: full evaluation on the last 28 days + HTML report + forecast from the last data day.
-With --start: only the forecast for --days days starting that Kyiv date."""
+With --start: only the forecast for --days days starting that Kyiv date.
+Without any options, typed by a person in a terminal: a menu of all of the above."""
 import argparse
 import re
+import subprocess
 import sys
 
 import numpy as np
@@ -54,6 +56,12 @@ def parse_slot(text):
             end += 24 * 60 if end < begin else 0
             return [(minute // 60) % 24 for minute in range(begin - begin % 60, end, 60)]
     raise SystemExit(f"--slot must look like 08:00-09:30 (Kyiv time), got: {text!r}")
+
+
+def parse_days(text):
+    if text.isdigit() and 1 <= int(text) <= C.MAX_LEAD:
+        return int(text)
+    raise SystemExit(f"Days must be a number from 1 to {C.MAX_LEAD}, got: {text!r}")
 
 
 def slot_text(chances, hour):
@@ -142,6 +150,12 @@ def print_forecast(fc, slot_label=None):
             print(percent.astype(str).add("%").to_string())
 
 
+def show_forecast(state, start, n_days, slot_label=None):
+    fc = forecast(state, start, n_days, parse_slot(slot_label) if slot_label else None)
+    print_forecast(fc, slot_label)
+    print(f"Saved: {save_forecast(fc, start)}")
+
+
 def save_forecast(fc, start):
     C.REPORTS_DIR.mkdir(exist_ok=True)
     path = C.REPORTS_DIR / f"forecast_{start.date()}.csv"
@@ -224,6 +238,85 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None)
     print(f"Report: {C.REPORTS_DIR / 'report.html'}")
 
 
+MENU = """
+Air raid alerts forecast. Data: {source}, up to {end} (Kyiv).
+  1  Test the model on the last 28 days + report + 7-day forecast   (Enter)
+  2  Forecast from a date you choose (1-7 days)
+  3  Chance of an alert during your own time slot (commute, shopping...)
+  4  Download the newest data, then do 1
+  5  Run the automatic tests
+  q  Quit"""
+
+
+def keyboard():
+    """True when a person runs the app in a terminal (CI and scripts have no keyboard: no menu there)."""
+    return all(stream is not None and stream.isatty() for stream in (sys.stdin, sys.stdout))
+
+
+def ask(question, check):
+    """Ask until the answer passes the same check as the command-line option; show its message otherwise."""
+    while True:
+        try:
+            return check(input(f"{question}: ").strip())
+        except SystemExit as error:
+            print(f"  {error.code}")
+
+
+def menu_forecast(state, slot_first, fresh):
+    end_day = state["end_day"].date()
+
+    def start_day(text):
+        start = parse_start(text or str(end_day))
+        check_start(start, state["end_day"])
+        return start
+
+    def slot_answer(text, required):
+        if text or required:
+            parse_slot(text)  # wrong format: its usual message, then the question again
+        return text or None
+
+    slot = ask("Time slot, Kyiv time, e.g. 08:00-09:30", lambda a: slot_answer(a, True)) if slot_first else None
+    start = ask(f"First forecast day, YYYY-MM-DD, {C.EARLIEST_START.date()}…{end_day} [{end_day}]", start_day)
+    days = ask(f"How many days, 1-{C.MAX_LEAD} [{C.MAX_LEAD}]", lambda a: parse_days(a or str(C.MAX_LEAD)))
+    if not slot_first:
+        slot = ask("Time slot, Kyiv time, e.g. 08:00-09:30 (Enter = skip)", lambda a: slot_answer(a, False))
+    print("→ same as: python3 run.py" + (" --fresh" if fresh else "") + f" --start {start.date()} --days {days}"
+          + (f" --slot {slot}" if slot else ""))
+    show_forecast(state, start, days, slot)
+
+
+def menu(inputs, state):
+    """The menu shown when a person types python3 run.py without options; back to it after every choice."""
+    fresh = False
+    try:
+        while True:
+            print(MENU.format(source="newest download" if fresh else "stored snapshot",
+                              end=state["end_day"].date()))
+            choice = input("Choose [1]: ").strip().lower() or "1"
+            if choice == "1":
+                run_evaluation(inputs, state)
+            elif choice in ("2", "3"):
+                menu_forecast(state, slot_first=choice == "3", fresh=fresh)
+            elif choice == "4":
+                print("→ same as: python3 run.py --fresh")
+                try:
+                    inputs = load_inputs(True)
+                except RuntimeError as error:  # no internet / source down: keep the data we have
+                    print(f"  {error}")
+                    continue
+                state, fresh = build(inputs), True
+                run_evaluation(inputs, state)
+            elif choice == "5":
+                print("→ same as: python3 run.py test")
+                subprocess.call([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."], cwd=C.ROOT)
+            elif choice == "q":
+                return
+            else:
+                print(f"  Please type 1-5 or q, got: {choice!r}")
+    except (EOFError, KeyboardInterrupt):  # Ctrl-D / Ctrl-C: quit quietly
+        print()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Forecast air raid alerts per oblast and day (1-7 days ahead).")
     parser.add_argument("--start", help="first forecast day (Kyiv), YYYY-MM-DD. Without it: evaluation + report.")
@@ -232,16 +325,19 @@ def main(argv=None):
     parser.add_argument("--slot", help="Kyiv time slot like 08:00-09:30: chance of an alert during it")
     args = parser.parse_args(argv)
     make_console_safe()
+    with_menu = not (sys.argv[1:] if argv is None else argv) and keyboard()
+    if with_menu:
+        print("Loading data...")
     start = parse_start(args.start) if args.start is not None else None  # "" is an invalid date, not "absent"
     slot = parse_slot(args.slot) if args.slot is not None else None
     inputs = load_inputs(args.fresh)
     state = build(inputs)
-    if start is None:
+    if with_menu:
+        menu(inputs, state)
+    elif start is None:
         run_evaluation(inputs, state, args.days, slot, args.slot)
     else:
-        fc = forecast(state, start, args.days, slot)
-        print_forecast(fc, args.slot)
-        print(f"Saved: {save_forecast(fc, start)}")
+        show_forecast(state, start, args.days, args.slot)
 
 
 if __name__ == "__main__":

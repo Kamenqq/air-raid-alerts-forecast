@@ -140,3 +140,69 @@ class ForecastOutputTest(unittest.TestCase):
         np.testing.assert_allclose([day2[f"chance_{h:02d}"] for h in range(24)], expected)
         quiet = fc[fc["oblast"] == "Lvivska oblast"].iloc[0]
         self.assertEqual(quiet["quietest_2h"], "—")       # no alerts at all in its history
+
+
+def run_menu(answers, state=None, **patches):
+    """Run the menu with typed answers; returns (printed text, mocks)."""
+    import contextlib
+    import io
+    import tempfile
+    from pathlib import Path
+    from unittest import mock
+    import alerts.main as M
+    out = io.StringIO()
+    with tempfile.TemporaryDirectory() as tmp, mock.patch.object(M.C, "REPORTS_DIR", Path(tmp)), \
+            mock.patch("builtins.input", side_effect=answers), contextlib.redirect_stdout(out), \
+            mock.patch.object(M, "run_evaluation") as evaluation, \
+            mock.patch.object(M, "load_inputs", **patches.get("load_inputs", {})) as load:
+        M.menu({}, state if state is not None else small_state())
+    return out.getvalue(), evaluation, load
+
+
+class MenuTest(unittest.TestCase):
+    def test_no_menu_without_a_keyboard(self):
+        # CI and scripts have no person typing: they must get the full run, never a waiting menu
+        from unittest import mock
+        import alerts.main as M
+        with mock.patch.object(M, "load_inputs", return_value={}), mock.patch.object(M, "build", return_value={}), \
+                mock.patch.object(M, "run_evaluation") as evaluation, mock.patch.object(M, "menu") as menu, \
+                mock.patch.object(M.sys.stdin, "isatty", return_value=False):
+            M.main([])
+        evaluation.assert_called_once()
+        menu.assert_not_called()
+
+    def test_menu_for_a_person_without_options(self):
+        from unittest import mock
+        import alerts.main as M
+        with mock.patch.object(M, "load_inputs", return_value={}), mock.patch.object(M, "build", return_value={}), \
+                mock.patch.object(M, "menu") as menu, mock.patch.object(M, "run_evaluation") as evaluation, \
+                mock.patch.object(M, "keyboard", return_value=True):
+            M.main([])
+        menu.assert_called_once()
+        evaluation.assert_not_called()  # the menu decides what runs
+
+    def test_enter_runs_the_evaluation_and_q_quits(self):
+        text, evaluation, _ = run_menu(["", "q"])
+        evaluation.assert_called_once()
+        self.assertIn("1  Test the model on the last 28 days", text)
+
+    def test_forecast_from_a_date_asks_again_after_wrong_answers(self):
+        text, _, _ = run_menu(["2", "2025-01-01", "2026-01-10", "9", "2", "", "q"])
+        self.assertIn("between 2026-01-01 and 2026-01-20", text)  # out-of-range date: asked again
+        self.assertIn("from 1 to 7", text)                        # 9 days: asked again
+        self.assertIn("→ same as: python3 run.py --start 2026-01-10 --days 2\n", text)
+        self.assertIn("Expected number of alerts per day", text)
+
+    def test_time_slot_with_default_date_and_days(self):
+        text, _, _ = run_menu(["3", "8-9", "08:00-09:30", "", "", "q"])
+        self.assertIn("--slot must look like 08:00-09:30", text)
+        self.assertIn("→ same as: python3 run.py --start 2026-01-20 --days 7 --slot 08:00-09:30", text)
+        self.assertIn("Chance of an alert at some moment during 08:00-09:30", text)
+
+    def test_unknown_choice_failed_download_and_ctrl_d_do_not_crash(self):
+        text, evaluation, load = run_menu(["7", "4", EOFError()],
+                                          load_inputs={"side_effect": RuntimeError("Download failed after 3 attempts")})
+        self.assertIn("Please type 1-5 or q", text)
+        self.assertIn("Download failed after 3 attempts", text)
+        load.assert_called_once_with(True)
+        evaluation.assert_not_called()  # no fresh data: nothing to evaluate

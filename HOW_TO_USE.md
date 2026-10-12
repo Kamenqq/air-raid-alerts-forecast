@@ -33,7 +33,7 @@ unpacked folder, e.g. `cd Downloads/air-raid-alerts-forecast-main`.
 
 All following commands are run **inside this folder**.
 
-## Step 3. First run — evaluation, report and a 7-day forecast
+## Step 3. First run — the menu, then evaluation, report and a 7-day forecast
 
 ```bash
 python3 run.py
@@ -44,10 +44,28 @@ What happens:
 1. **First time only (~1 minute, needs internet):** it creates a private Python environment in a folder
    called `.venv` and installs four libraries into it (pandas, numpy, scikit-learn, matplotlib). Nothing is
    installed into your system Python. Later runs skip this step.
-2. **Evaluation (~20 seconds):** using the data stored in the project (`data/snapshot/`), it tests the model
+2. **The menu** lists everything the app can do. Type a number and press Enter; just **Enter** = choice 1:
+
+   ```
+   Air raid alerts forecast. Data: stored snapshot, up to 2026-10-11 (Kyiv).
+     1  Test the model on the last 28 days + report + 7-day forecast   (Enter)
+     2  Forecast from a date you choose (1-7 days)
+     3  Chance of an alert during your own time slot (commute, shopping...)
+     4  Download the newest data, then do 1
+     5  Run the automatic tests
+     q  Quit
+   Choose [1]:
+   ```
+
+   Choices 2 and 3 ask for the date, the number of days and the time slot one by one (Enter takes the value in
+   `[brackets]`); a wrong answer shows what is wrong and asks again. Each choice prints the **equivalent
+   command** (`→ same as: python3 run.py --start …`), which is what Steps 5–8 describe. After a choice the menu
+   comes back; `q` (or Ctrl-C) quits. The menu appears only when you run `python3 run.py` without options in a
+   terminal.
+3. **Evaluation (~20 seconds, choice 1):** using the data stored in the project (`data/snapshot/`), it tests the model
    honestly on the latest 28 days: for every day it pretends to be on the morning of that day, retrains the
    model on earlier days only, forecasts, and compares with what really happened.
-3. It prints a **one-paragraph result**, the **forecast tables**, and saves files to the `reports/` folder.
+4. It prints a **one-paragraph result**, the **forecast tables**, and saves files to the `reports/` folder.
 
 ### How to read the forecast
 
@@ -150,7 +168,7 @@ python3 run.py --fresh
 
 Downloads the latest alert files from the
 [source repository](https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset) (~40 MB) and new posts from
-the Telegram channels, then does the same as Step 3. Takes about half a minute plus download time. The fresh
+the Telegram channels, then does the same as menu choice 1 (Step 3; with an option given, no menu is shown). Takes about half a minute plus download time. The fresh
 data goes to `data/fresh/`; the stored snapshot is not changed, so `python3 run.py` without `--fresh` still
 reproduces the numbers in the README. You can combine it, e.g. `python3 run.py --fresh --days 3` (the forecast
 starts from the last day in the fresh data).
@@ -164,7 +182,7 @@ recent as that.
 python3 run.py test
 ```
 
-Runs the 64 automatic checks — including the **leakage test**, which proves the forecast never uses information
+Runs the 70 automatic checks — including the **leakage test**, which proves the forecast never uses information
 from after the moment it is made. Expected last line: `OK`. A few lines like `Creating a private environment…`
 or `Downloading https://example.invalid/x.csv` may appear in between — they come from tests that simulate
 those situations and are not errors.
