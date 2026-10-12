@@ -190,3 +190,20 @@ and `python -m unittest`.
   least half of the day's alerts, from the same 28-day hourly profile. Evaluated by coverage (share of real
   alerts inside the window; promised 50%) and mean window length, compared with a random window of the same
   length (length / 24).
+
+## 11. Revision 2026-10-12 (second round, after independent reviews)
+- **H4 neighbouring oblasts:** border table for the 24 oblasts (Luhansk and Crimea excluded: permanent alerts, no
+  daily variation, not in the data) and two features — neighbours' alerts yesterday and 7-day average. Decided on a
+  **validation period** = the 28 days before the test period (2026-08-16 … 09-12): count MAE 2.028 → 2.010 → kept.
+  Test period: unchanged tie with the last-7-days average.
+- **"When" for a resident planning the day:** the main window and top-3 hours are retired. New output: the chance
+  that an alert is active at some moment of each Kyiv hour (from an active-hours grid), the quietest / riskiest
+  2-hour slots, and any slot via `--slot HH:MM-HH:MM`. On validation, per-hour chances from 28 days (with or without
+  scaling by the predicted count) lost to "the same chance every hour"; the shown rule — half the oblast's hourly
+  pattern + half its flat level over 56 days, scaled by the predicted count for 1 day ahead only — beat it at every
+  horizon. Test period (measured once): Brier 0.1871 vs 0.1870 (1 day), 0.1904 vs 0.1893 (7 days); calibration
+  close. Evaluated with the Brier score and a calibration table.
+- **Security review fixes:** payment cards, links, emails and @usernames are replaced with placeholders in stored and
+  downloaded Telegram posts (model inputs proven identical); upper version limits for libraries; read-only CI token.
+- **Code review fixes:** tests now guard the `--start` training cutoff and the volunteer-only target filter (filter
+  moved into `build()`); clean `.venv` rebuild and Ctrl-C cleanup; retry of cut-off downloads; Excel-friendly CSV.

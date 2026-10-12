@@ -22,7 +22,8 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
   If a library can't work everywhere and can't be fixed quickly → standard library only.
 
 ## Agreed design (summary)
-- Forecast **per oblast per day, 1–7 days ahead**: number of alerts + top-3 most likely hours (24h profile).
+- Forecast **per oblast per day, 1–7 days ahead**: number of alerts + **chance of an alert in each Kyiv hour**,
+  quietest / riskiest 2-hour slots, and any time slot via `--slot` (main window and top-3 hours retired).
   User picks `--start` and `--days`; `--fresh` downloads the latest data; default run = frozen snapshot.
 - **Target (user decision 2026-10-12, after an experiment):** eTryvoga (volunteer CSV) alerts only, merged per
   oblast into episodes. Combining all sources made the target change on 2026-09-07 (the other sources stopped),
@@ -35,12 +36,14 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
 - **Decisions 2026-10-12 (round 2):** (1) H4 approved — add neighbouring-oblast features (border table +
   neighbours' yesterday / 7-day averages). (2) "When" for a resident planning the day (mall trip, commute):
   replace the main window with the **chance that an alert is active in each hour / any time slot**, from recent
-  history (option 1), and test **scaling it by the predicted daily count** (option 2). Option 3 (separate hourly
-  model) deferred — **remind the user to reconsider it if the deadline allows**. (3) Decide what to keep on a
+  history (option 1), and test **scaling it by the predicted daily count** (option 2). On validation both lost to
+  a flat chance; user chose **variant A**: half hourly pattern + half flat level over 56 days, × predicted count
+  for 1 day ahead only (still shown for all 7 days). Test: ties flat, well calibrated. Option 3 (separate hourly
+  model) reminded and **skipped by the user** (2026-10-12). (3) Decide what to keep on a
   **validation period = the 28 days before the test period**, then report the test period once.
 - Count model: `HistGradientBoostingRegressor(loss="poisson")`, retrained for each forecast time, no tuning.
-  Baselines: last-7-days mean; same weekday last week. Metrics: MAE, skill vs best baseline, bias,
-  peak-hour hit rate, main-window coverage and length. Test = last 28 full days of the snapshot.
+  Baselines: last-7-days mean; same weekday last week. Metrics: MAE, skill vs best baseline, bias;
+  hourly chances: Brier score vs 'same chance every hour', calibration table. Test = last 28 full days of the snapshot.
 - Prototype philosophy (user): build a first working version, test, then correct. Don't over-engineer
   (DST edge cases, hour-precise data availability). Give heads-ups; don't block on details.
 
