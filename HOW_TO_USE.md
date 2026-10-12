@@ -164,7 +164,7 @@ recent as that.
 python3 run.py test
 ```
 
-Runs the 63 automatic checks — including the **leakage test**, which proves the forecast never uses information
+Runs the 64 automatic checks — including the **leakage test**, which proves the forecast never uses information
 from after the moment it is made. Expected last line: `OK`. A few lines like `Creating a private environment…`
 or `Downloading https://example.invalid/x.csv` may appear in between — they come from tests that simulate
 those situations and are not errors.

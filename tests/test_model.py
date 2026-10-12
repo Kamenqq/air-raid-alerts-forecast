@@ -26,3 +26,11 @@ class ModelTest(unittest.TestCase):
     def test_too_little_history_is_an_error(self):
         with self.assertRaises(ValueError):
             train(synthetic_rows(), pd.Timestamp("2026-01-03"))
+
+    def test_all_empty_feature_is_left_out(self):
+        # scikit-learn >= 1.7 cannot bin a column with no known values (crashed CI on Python 3.13)
+        rows = synthetic_rows()
+        rows["tg_drones_1d"] = np.nan
+        model = train(rows, pd.Timestamp("2026-02-20"))
+        self.assertNotIn("tg_drones_1d", model.features_)
+        self.assertTrue((predict(model, rows[rows["t0"] == pd.Timestamp("2026-02-20")]) > 0).all())
