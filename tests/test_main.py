@@ -187,16 +187,17 @@ class MenuTest(unittest.TestCase):
         self.assertIn("1  Test the model on the last 28 days", text)
 
     def test_forecast_from_a_date_asks_again_after_wrong_answers(self):
-        text, _, _ = run_menu(["2", "2025-01-01", "2026-01-10", "9", "2", "", "q"])
-        self.assertIn("between 2026-01-01 and 2026-01-20", text)  # out-of-range date: asked again
-        self.assertIn("from 1 to 7", text)                        # 9 days: asked again
-        self.assertIn("→ same as: python3 run.py --start 2026-01-10 --days 2\n", text)
+        text, _, _ = run_menu(["2", "2025-01-01", "2026-01-28", "2026-01-10 2026-01-11", "2026-01-12", "", "", "q"])
+        self.assertIn("between 2026-01-01 and 2026-01-20", text)   # day before the allowed range
+        self.assertIn("reaches 2026-01-26 at most", text)          # too far ahead
+        self.assertIn("after the first chosen day", text)          # manual start after the chosen days
+        self.assertIn("→ same as: python3 run.py --for 2026-01-10 2026-01-11\n", text)
         self.assertIn("Expected number of alerts per day", text)
 
-    def test_time_slot_with_default_date_and_days(self):
+    def test_time_slot_with_default_days_and_start(self):
         text, _, _ = run_menu(["3", "8-9", "08:00-09:30", "", "", "q"])
         self.assertIn("--slot must look like 08:00-09:30", text)
-        self.assertIn("→ same as: python3 run.py --start 2026-01-20 --days 7 --slot 08:00-09:30", text)
+        self.assertIn("→ same as: python3 run.py --for 2026-01-20 2026-01-26 --slot 08:00-09:30", text)
         self.assertIn("Chance of an alert at some moment during 08:00-09:30", text)
 
     def test_unknown_choice_failed_download_and_ctrl_d_do_not_crash(self):
@@ -252,3 +253,75 @@ class MenuTest(unittest.TestCase):
         load.assert_called_once_with(False)
         self.assertEqual(evaluation.call_count, 2)
         self.assertIn("up to 2026-01-20", out.getvalue())  # the menu shows the data's last day once loaded
+
+
+class PickDaysTest(unittest.TestCase):
+    END = pd.Timestamp("2026-10-11")
+
+    def pick(self, first, last=None, start=None):
+        from alerts.main import pick_days
+        return pick_days(pd.Timestamp(first), pd.Timestamp(last or first),
+                         pd.Timestamp(start) if start else None, self.END)
+
+    def refused(self, *args):
+        with self.assertRaises(SystemExit) as ctx:
+            self.pick(*args)
+        return str(ctx.exception.code)
+
+    def test_future_day_starts_at_the_last_data_day(self):
+        self.assertEqual(self.pick("2026-10-14"), (self.END, 4))   # forecast 11..14 Oct, show 14 Oct
+
+    def test_past_days_start_at_the_first_chosen_day(self):
+        self.assertEqual(self.pick("2026-10-01", "2026-10-03"), (pd.Timestamp("2026-10-01"), 3))
+
+    def test_manual_start(self):
+        self.assertEqual(self.pick("2026-10-14", None, "2026-10-10"), (pd.Timestamp("2026-10-10"), 5))
+        self.assertIn("after the first chosen day", self.refused("2026-10-14", None, "2026-10-15"))
+
+    def test_too_far(self):
+        self.assertIn("reaches 2026-10-17 at most", self.refused("2026-10-18"))
+        self.assertIn("reaches 2026-10-11 at most", self.refused("2026-10-05", "2026-10-14"))
+
+    def test_bad_ranges(self):
+        self.assertIn("before the first day", self.refused("2026-10-14", "2026-10-13"))
+        self.assertIn("between 2026-01-01 and 2026-10-11", self.refused("2025-12-30"))
+
+
+def run_main(args):
+    """main() on the small test state; returns (printed text, train spy, saved file names)."""
+    import contextlib
+    import io
+    import tempfile
+    from pathlib import Path
+    from unittest import mock
+    import alerts.main as M
+    from alerts import model as model_module
+    out = io.StringIO()
+    with tempfile.TemporaryDirectory() as tmp, mock.patch.object(M.C, "REPORTS_DIR", Path(tmp)), \
+            mock.patch.object(M, "load_inputs", return_value={}), \
+            mock.patch.object(M, "build", return_value=small_state()), \
+            mock.patch.object(M, "train", side_effect=model_module.train) as spy, contextlib.redirect_stdout(out):
+        M.main(args)
+        saved = sorted(p.name for p in Path(tmp).iterdir())
+    return out.getvalue(), spy, saved
+
+
+class ForDaysTest(unittest.TestCase):
+    def test_future_day_uses_the_newest_data_and_shows_only_that_day(self):
+        text, spy, saved = run_main(["--for", "2026-01-22"])       # small_state data ends 2026-01-20
+        self.assertEqual(spy.call_args.kwargs["before_day"], pd.Timestamp("2026-01-20"))
+        self.assertIn("Forecast made on 2026-01-20", text)
+        self.assertNotIn("2026-01-21", text)
+        self.assertEqual(saved, ["forecast_2026-01-22.csv"])
+
+    def test_past_days_use_only_data_before_them(self):
+        _, spy, _ = run_main(["--for", "2026-01-10", "2026-01-12"])
+        self.assertEqual(spy.call_args.kwargs["before_day"], pd.Timestamp("2026-01-10"))  # leakage guard
+
+    def test_wrong_combinations_are_refused(self):
+        for args, message in ((["--for", "2026-01-22", "--days", "3"], "not both"),
+                              (["--for", "2026-01-10", "2026-01-11", "2026-01-12"], "one day or two"),
+                              (["--for", "14.10.2026"], "--for must be a date")):
+            with self.assertRaises(SystemExit) as ctx:
+                run_main(args)
+            self.assertIn(message, str(ctx.exception.code))

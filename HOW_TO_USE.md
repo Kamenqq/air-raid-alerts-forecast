@@ -49,7 +49,7 @@ What happens:
    ```
    Air raid alerts forecast. Data: stored snapshot.
      1  Test the model on the last 28 days + report + 7-day forecast   (Enter at the start)
-     2  Forecast from a date you choose (1-7 days)
+     2  Forecast for the days you choose (up to 7 days ahead)
      3  Chance of an alert during your own time slot (commute, shopping...)
      4  Download the newest data, then do 1
      5  Run the automatic tests
@@ -57,7 +57,7 @@ What happens:
    Choose [1]:
    ```
 
-   Choices 2 and 3 ask for the date, the number of days and the time slot one by one (Enter takes the value in
+   Choices 2 and 3 ask which days you want, when the forecast is made (Enter = automatic) and the time slot one by one (Enter takes the value in
    `[brackets]`); a wrong answer shows what is wrong and asks again. Each choice prints the **equivalent
    command** (`→ same as: python3 run.py --start …`), which is what Steps 5–8 describe. After a choice the menu
    comes back; Ctrl-C stops a running choice, `q` quits. The data is loaded (~2 s) on the first choice that needs it. The menu appears only when you run `python3 run.py` without options in a
@@ -119,7 +119,22 @@ Open **`reports/report.html`** in any web browser (double-click it in your file 
 Other files in `reports/`: `backtest.csv` (every test forecast with the real outcome) and
 `forecast_<date>.csv` (the forecast table, see Step 5).
 
-## Step 5. Forecast from a date you choose
+## Step 5. Forecast for the days you choose
+
+**The easy way — say which days you want:**
+
+```bash
+python3 run.py --for 2026-10-14
+python3 run.py --for 2026-10-14 2026-10-16
+```
+
+The app picks the start (the moment the forecast is made) itself: the last day in the data when the days are in
+the future (newest information), or the first chosen day when they are in the past (then it shows what the model
+would have said back then, using only earlier data). The model looks at most 7 days ahead of the start; further
+days are refused with the furthest possible day. Only the chosen days are printed and saved
+(`reports/forecast_<first day>.csv`).
+
+**Choosing the start yourself:**
 
 ```bash
 python3 run.py --start 2026-10-05 --days 3

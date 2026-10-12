@@ -29,13 +29,13 @@ def make_console_safe():
             stream.reconfigure(errors="replace")
 
 
-def parse_start(text):
+def parse_start(text, option="--start"):
     try:
         day = pd.to_datetime(text, format="%Y-%m-%d")
     except (ValueError, TypeError):
         day = pd.NaT
     if pd.isna(day):  # e.g. "" gives NaT instead of an error
-        raise SystemExit(f"--start must be a date like 2026-10-05 (YYYY-MM-DD), got: {text!r}")
+        raise SystemExit(f"{option} must be a date like 2026-10-05 (YYYY-MM-DD), got: {text!r}")
     return pd.Timestamp(day).normalize()
 
 
@@ -44,6 +44,25 @@ def check_start(start, end_day):
     if not C.EARLIEST_START <= start <= end_day:
         raise SystemExit(f"--start must be between {C.EARLIEST_START.date()} and {end_day.date()} "
                          f"(the last day in the data).")
+
+
+def pick_days(first, last, start, end_day):
+    """--for FIRST LAST -> (start, number of days to forecast). Without a manual start the forecast is made at
+    the latest moment that is not after the first chosen day: future days get the newest data, past days only
+    data from before them."""
+    if last < first:
+        raise SystemExit(f"--for: the last day {last.date()} is before the first day {first.date()}.")
+    if start is None:
+        start = min(first, end_day)
+    elif start > first:
+        raise SystemExit(f"--start {start.date()} is after the first chosen day {first.date()}: the forecast "
+                         "would use information from a chosen day.")
+    check_start(start, end_day)
+    furthest = start + pd.Timedelta(days=C.MAX_LEAD - 1)
+    if last > furthest:
+        raise SystemExit(f"The model forecasts at most {C.MAX_LEAD} days ahead: a forecast made on {start.date()} "
+                         f"reaches {furthest.date()} at most. For later days use newer data (menu 4 / --fresh).")
+    return start, (last - start).days + 1
 
 
 def parse_slot(text):
@@ -56,12 +75,6 @@ def parse_slot(text):
             end += 24 * 60 if end < begin else 0
             return [(minute // 60) % 24 for minute in range(begin - begin % 60, end, 60)]
     raise SystemExit(f"--slot must look like 08:00-09:30 (Kyiv time), got: {text!r}")
-
-
-def parse_days(text):
-    if text.isdigit() and 1 <= int(text) <= C.MAX_LEAD:
-        return int(text)
-    raise SystemExit(f"Days must be a number from 1 to {C.MAX_LEAD}, got: {text!r}")
 
 
 def slot_text(chances, hour):
@@ -150,10 +163,20 @@ def print_forecast(fc, slot_label=None):
             print(percent.astype(str).add("%").to_string())
 
 
-def show_forecast(state, start, n_days, slot_label=None):
+def show_forecast(state, start, n_days, slot_label=None, first=None):
+    """Forecast only (no evaluation)."""
     fc = forecast(state, start, n_days, parse_slot(slot_label) if slot_label else None)
+    print(f"Forecast made on {start.date()} at 00:00 Kyiv, using only data from before then.")
+    return present(fc, start, slot_label, first)
+
+
+def present(fc, start, slot_label=None, first=None):
+    """Keep the chosen days (from `first`, default the start day), print them and save the CSV."""
+    first = first if first is not None else start
+    fc = fc[fc["day"] >= first.date()]
     print_forecast(fc, slot_label)
-    print(f"Saved: {save_forecast(fc, start)}")
+    print(f"Saved: {save_forecast(fc, first)}")
+    return fc
 
 
 def save_forecast(fc, start):
@@ -198,7 +221,6 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None)
 
     fc_start = state["end_day"]
     fc = forecast(state, fc_start, n_days, slot)
-    save_forecast(fc, fc_start)
     first_day = fc[fc["day"] == fc["day"].min()].set_index("oblast")
     chance_map = first_day[[f"chance_{h:02d}" for h in range(24)]].mul(100)
     chance_map.columns = [f"{h:02d}" for h in range(24)]
@@ -234,14 +256,14 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None)
          + table_html(first_day[["expected", "quietest_2h", "riskiest_2h"]], 1)),
     ]
     write_report(C.REPORTS_DIR / "report.html", "Air raid alerts forecast — evaluation", sections)
-    print_forecast(fc, slot_label)
+    present(fc, fc_start, slot_label)
     print(f"Report: {C.REPORTS_DIR / 'report.html'}")
 
 
 MENU = """
 Air raid alerts forecast. Data: {data}.
   1  Test the model on the last 28 days + report + 7-day forecast   (Enter at the start)
-  2  Forecast from a date you choose (1-7 days)
+  2  Forecast for the days you choose (up to 7 days ahead)
   3  Chance of an alert during your own time slot (commute, shopping...)
   4  Download the newest data, then do 1
   5  Run the automatic tests
@@ -263,12 +285,15 @@ def ask(question, check):
 
 
 def menu_forecast(state, slot_first, fresh):
-    end_day = state["end_day"].date()
+    end_day = state["end_day"]
 
-    def start_day(text):
-        start = parse_start(text or str(end_day))
-        check_start(start, state["end_day"])
-        return start
+    def days_answer(text):
+        dates = [parse_start(day, "Days") for day in text.split()] or \
+            [end_day, end_day + pd.Timedelta(days=C.MAX_LEAD - 1)]
+        if len(dates) > 2:
+            raise SystemExit("Type one day or two (first and last).")
+        pick_days(dates[0], dates[-1], None, end_day)  # refuses days the model cannot reach
+        return dates[0], dates[-1]
 
     def slot_answer(text, required):
         if text or required:
@@ -276,13 +301,17 @@ def menu_forecast(state, slot_first, fresh):
         return text or None
 
     slot = ask("Time slot, Kyiv time, e.g. 08:00-09:30", lambda a: slot_answer(a, True)) if slot_first else None
-    start = ask(f"First forecast day, YYYY-MM-DD, {C.EARLIEST_START.date()}…{end_day} [{end_day}]", start_day)
-    days = ask(f"How many days, 1-{C.MAX_LEAD} [{C.MAX_LEAD}]", lambda a: parse_days(a or str(C.MAX_LEAD)))
+    first, last = ask("Which days? e.g. 2026-10-14, or 2026-10-14 2026-10-16 [Enter = next 7 days]", days_answer)
+    auto = min(first, end_day)
+    start, n_days = ask(f"Forecast made on, YYYY-MM-DD [automatic = {auto.date()}]",
+                        lambda a: pick_days(first, last, parse_start(a) if a else None, end_day))
     if not slot_first:
         slot = ask("Time slot, Kyiv time, e.g. 08:00-09:30 (Enter = skip)", lambda a: slot_answer(a, False))
-    print("→ same as: python3 run.py" + (" --fresh" if fresh else "") + f" --start {start.date()} --days {days}"
-          + (f" --slot {slot}" if slot else ""))
-    show_forecast(state, start, days, slot)
+    command = ("python3 run.py" + (" --fresh" if fresh else "") + f" --for {first.date()}"
+               + (f" {last.date()}" if last != first else "") + (f" --start {start.date()}" if start != auto else "")
+               + (f" --slot {slot}" if slot else ""))
+    print(f"→ same as: {command}")
+    return show_forecast(state, start, n_days, slot, first=first)
 
 
 def menu(inputs=None, state=None):
@@ -331,21 +360,32 @@ def menu(inputs=None, state=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Forecast air raid alerts per oblast and day (1-7 days ahead).")
     parser.add_argument("--start", help="first forecast day (Kyiv), YYYY-MM-DD. Without it: evaluation + report.")
-    parser.add_argument("--days", type=int, default=C.MAX_LEAD, choices=range(1, C.MAX_LEAD + 1), metavar="1-7")
+    parser.add_argument("--for", dest="for_days", nargs="+", metavar="DAY",
+                        help="the day(s) to forecast, YYYY-MM-DD or FIRST LAST; the start is chosen automatically")
+    parser.add_argument("--days", type=int, choices=range(1, C.MAX_LEAD + 1), metavar="1-7")
     parser.add_argument("--fresh", action="store_true", help="download the latest data first (slow)")
     parser.add_argument("--slot", help="Kyiv time slot like 08:00-09:30: chance of an alert during it")
     args = parser.parse_args(argv)
     make_console_safe()
     if not (sys.argv[1:] if argv is None else argv) and keyboard():
         return menu()  # a person without options: the menu loads data when a choice needs it
+    for_days = [parse_start(day, "--for") for day in args.for_days] if args.for_days else None
+    if for_days and len(for_days) > 2:
+        raise SystemExit(f"--for takes one day or two (FIRST LAST), got {len(for_days)}.")
+    if for_days and args.days is not None:
+        raise SystemExit("Use either --for (which days) or --days (how many), not both.")
+    n_days = args.days or C.MAX_LEAD
     start = parse_start(args.start) if args.start is not None else None  # "" is an invalid date, not "absent"
     slot = parse_slot(args.slot) if args.slot is not None else None
     inputs = load_inputs(args.fresh)
     state = build(inputs)
-    if start is None:
-        run_evaluation(inputs, state, args.days, slot, args.slot)
+    if for_days:
+        start, n = pick_days(for_days[0], for_days[-1], start, state["end_day"])
+        show_forecast(state, start, n, args.slot, first=for_days[0])
+    elif start is None:
+        run_evaluation(inputs, state, n_days, slot, args.slot)
     else:
-        show_forecast(state, start, args.days, args.slot)
+        show_forecast(state, start, n_days, args.slot)
 
 
 if __name__ == "__main__":
