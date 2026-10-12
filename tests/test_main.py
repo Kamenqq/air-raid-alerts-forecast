@@ -153,7 +153,7 @@ def run_menu(answers, state=None, **patches):
     out = io.StringIO()
     with tempfile.TemporaryDirectory() as tmp, mock.patch.object(M.C, "REPORTS_DIR", Path(tmp)), \
             mock.patch("builtins.input", side_effect=answers), contextlib.redirect_stdout(out), \
-            mock.patch.object(M, "run_evaluation") as evaluation, \
+            mock.patch.object(M, "run_evaluation", **patches.get("run_evaluation", {})) as evaluation, \
             mock.patch.object(M, "load_inputs", **patches.get("load_inputs", {})) as load:
         M.menu({}, state if state is not None else small_state())
     return out.getvalue(), evaluation, load
@@ -217,3 +217,38 @@ class MenuTest(unittest.TestCase):
         text, evaluation, _ = run_menu(["", "", "q"])
         evaluation.assert_called_once()
         self.assertIn("Please type 1-5 or q", text)
+
+    def test_ctrl_c_during_a_choice_returns_to_the_menu(self):
+        text, _, _ = run_menu(["1", "q"], run_evaluation={"side_effect": KeyboardInterrupt()})
+        self.assertIn("Stopped", text)
+        self.assertEqual(text.count("Air raid alerts forecast"), 2)  # the menu came back and "q" was read
+
+    def test_choice_5_runs_exactly_the_launcher_test_command(self):
+        import sys
+        from unittest import mock
+        import alerts.main as M
+        import run
+        with mock.patch.object(M.subprocess, "call") as call:
+            run_menu(["5", "q"])
+        self.assertEqual(call.call_args.args[0], [sys.executable, *run.command(["test"])])
+
+    def test_menu_shows_before_loading_and_loads_once_when_needed(self):
+        import contextlib
+        import io
+        from unittest import mock
+        import alerts.main as M
+        with mock.patch.object(M, "load_inputs", return_value={}) as load, \
+                mock.patch.object(M, "build", return_value=small_state()), mock.patch.object(M, "menu") as menu, \
+                mock.patch.object(M, "keyboard", return_value=True):
+            M.main([])
+        load.assert_not_called()  # tests or quitting need no data
+        menu.assert_called_once_with()
+        out = io.StringIO()
+        with mock.patch.object(M, "load_inputs", return_value={}) as load, \
+                mock.patch.object(M, "build", return_value=small_state()), \
+                mock.patch.object(M, "run_evaluation") as evaluation, \
+                mock.patch("builtins.input", side_effect=["1", "1", "q"]), contextlib.redirect_stdout(out):
+            M.menu()
+        load.assert_called_once_with(False)
+        self.assertEqual(evaluation.call_count, 2)
+        self.assertIn("up to 2026-01-20", out.getvalue())  # the menu shows the data's last day once loaded

@@ -239,7 +239,7 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None)
 
 
 MENU = """
-Air raid alerts forecast. Data: {source}, up to {end} (Kyiv).
+Air raid alerts forecast. Data: {data}.
   1  Test the model on the last 28 days + report + 7-day forecast   (Enter at the start)
   2  Forecast from a date you choose (1-7 days)
   3  Chance of an alert during your own time slot (commute, shopping...)
@@ -285,36 +285,46 @@ def menu_forecast(state, slot_first, fresh):
     show_forecast(state, start, days, slot)
 
 
-def menu(inputs, state):
-    """The menu shown when a person types python3 run.py without options; back to it after every choice."""
+def menu(inputs=None, state=None):
+    """The menu shown when a person types python3 run.py without options; back to it after every choice.
+    Data is loaded on the first choice that needs it, so running the tests or quitting does not wait."""
     fresh, default = False, "1"
     try:
         while True:
-            print(MENU.format(source="newest download" if fresh else "stored snapshot",
-                              end=state["end_day"].date()))
+            data = "newest download" if fresh else "stored snapshot"
+            print(MENU.format(data=data + (f", up to {state['end_day'].date()} (Kyiv)" if state else "")))
             choice = input(f"Choose [{default}]: " if default else "Choose: ").strip().lower() or default
             default = ""  # Enter = 1 only at the start: a stray Enter later must not re-run the evaluation
-            if choice == "1":
-                run_evaluation(inputs, state)
-            elif choice in ("2", "3"):
-                menu_forecast(state, slot_first=choice == "3", fresh=fresh)
-            elif choice == "4":
-                print("→ same as: python3 run.py --fresh")
-                try:
-                    inputs = load_inputs(True)
-                except Exception as error:  # no internet, source down or changed: keep the data we have
-                    print(f"  {error}")
-                    continue
-                state, fresh = build(inputs), True
-                run_evaluation(inputs, state)
-            elif choice == "5":
-                print("→ same as: python3 run.py test")
-                subprocess.call([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."], cwd=C.ROOT)
-            elif choice == "q":
+            if choice == "q":
                 return
-            else:
+            if choice not in ("1", "2", "3", "4", "5"):
                 print(f"  Please type 1-5 or q, got: {choice!r}")
-    except (EOFError, KeyboardInterrupt):  # Ctrl-D / Ctrl-C: quit quietly
+                continue
+            try:  # Ctrl-C stops the running choice and comes back here
+                if choice in ("1", "2", "3") and state is None:
+                    print("Loading data...")
+                    inputs = load_inputs(False)
+                    state = build(inputs)
+                if choice == "1":
+                    run_evaluation(inputs, state)
+                elif choice in ("2", "3"):
+                    menu_forecast(state, slot_first=choice == "3", fresh=fresh)
+                elif choice == "4":
+                    print("→ same as: python3 run.py --fresh")
+                    try:
+                        inputs = load_inputs(True)
+                    except Exception as error:  # no internet, source down or changed: keep the data we have
+                        print(f"  {error}")
+                        continue
+                    state, fresh = build(inputs), True
+                    run_evaluation(inputs, state)
+                else:
+                    from run import command  # the launcher's own test command, so the two cannot drift apart
+                    print("→ same as: python3 run.py test")
+                    subprocess.call([sys.executable, *command(["test"])], cwd=C.ROOT)
+            except KeyboardInterrupt:
+                print("\n  Stopped; back to the menu.")
+    except (EOFError, KeyboardInterrupt):  # Ctrl-D / Ctrl-C at the menu prompt: quit quietly
         print()
 
 
@@ -326,16 +336,13 @@ def main(argv=None):
     parser.add_argument("--slot", help="Kyiv time slot like 08:00-09:30: chance of an alert during it")
     args = parser.parse_args(argv)
     make_console_safe()
-    with_menu = not (sys.argv[1:] if argv is None else argv) and keyboard()
-    if with_menu:
-        print("Loading data...")
+    if not (sys.argv[1:] if argv is None else argv) and keyboard():
+        return menu()  # a person without options: the menu loads data when a choice needs it
     start = parse_start(args.start) if args.start is not None else None  # "" is an invalid date, not "absent"
     slot = parse_slot(args.slot) if args.slot is not None else None
     inputs = load_inputs(args.fresh)
     state = build(inputs)
-    if with_menu:
-        menu(inputs, state)
-    elif start is None:
+    if start is None:
         run_evaluation(inputs, state, args.days, slot, args.slot)
     else:
         show_forecast(state, start, args.days, args.slot)

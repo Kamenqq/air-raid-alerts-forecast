@@ -47,7 +47,7 @@ What happens:
 2. **The menu** lists everything the app can do. Type a number and press Enter; at the start just **Enter** = choice 1:
 
    ```
-   Air raid alerts forecast. Data: stored snapshot, up to 2026-10-11 (Kyiv).
+   Air raid alerts forecast. Data: stored snapshot.
      1  Test the model on the last 28 days + report + 7-day forecast   (Enter at the start)
      2  Forecast from a date you choose (1-7 days)
      3  Chance of an alert during your own time slot (commute, shopping...)
@@ -60,7 +60,7 @@ What happens:
    Choices 2 and 3 ask for the date, the number of days and the time slot one by one (Enter takes the value in
    `[brackets]`); a wrong answer shows what is wrong and asks again. Each choice prints the **equivalent
    command** (`→ same as: python3 run.py --start …`), which is what Steps 5–8 describe. After a choice the menu
-   comes back; `q` (or Ctrl-C) quits. The menu appears only when you run `python3 run.py` without options in a
+   comes back; Ctrl-C stops a running choice, `q` quits. The data is loaded (~2 s) on the first choice that needs it. The menu appears only when you run `python3 run.py` without options in a
    terminal.
 3. **Evaluation (~20 seconds, choice 1):** using the data stored in the project (`data/snapshot/`), it tests the model
    honestly on the latest 28 days: for every day it pretends to be on the morning of that day, retrains the
