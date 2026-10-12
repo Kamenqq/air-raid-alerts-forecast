@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from . import config as C
+from .details import DURATION_COLUMNS, WINDOW_COLUMNS, WINDOWS, durations, minutes_text
 from .episodes import daily_counts, episode_starts, impute_naive, merge_episodes, naive_medians
 from .evaluate import backtest, bias, calibration, chance_scores, mae_table, naive_check, test_period
 from .features import active_cube, blended_chance, blended_slot_chances, forecast_chance, make_rows, tg_daily
@@ -128,7 +129,7 @@ def build(inputs):
     days = pd.date_range(C.kyiv_day(C.DATA_START), end_day + pd.Timedelta(days=C.MAX_LEAD + 1))
     daily = daily_counts(episodes, days, data_end)
     tg = tg_daily(chomu_flags(inputs["chomu"]), days)
-    return {"episodes": episodes, "starts": episode_starts(episodes), "daily": daily, "days": days,
+    return {"vol": inputs["vol"], "episodes": episodes, "starts": episode_starts(episodes), "daily": daily, "days": days,
             "cube": active_cube(episodes, days), "rows": make_rows(daily, tg, days), "end_day": end_day}
 
 
@@ -144,6 +145,7 @@ def forecast(state, start, n_days, slot=None):
     history = {o: (blended_chance(cube, days, o, start), blended_slot_chances(cube, days, o, start, 2),
                    blended_slot_chances(cube, days, o, start, len(slot))[slot[0]] if slot else None)
                for o in C.OBLASTS}
+    recent = durations(state["vol"], start)
     records = []
     for row in rows.itertuples():
         oblast = C.OBLASTS[row.oblast]
@@ -156,6 +158,8 @@ def forecast(state, start, n_days, slot=None):
             if slots.max() > 0 else ("—", "—")
         record = {"oblast": oblast, "day": row.target_day.date(), "expected": row.expected, "actual": row.actual,
                   "quietest_2h": quiet[0], "riskiest_2h": quiet[1]}
+        record.update(dict(zip(WINDOW_COLUMNS, slots[WINDOWS])))
+        record.update({f"dur_{name}": recent.loc[oblast, name] for name in DURATION_COLUMNS})
         if slot:
             record["slot_chance"] = shown(in_slot)
         record.update({f"chance_{h:02d}": c for h, c in enumerate(shown(hourly))})
@@ -177,21 +181,55 @@ def print_forecast(fc, slot_label=None):
             print(percent.astype(str).add("%").to_string())
 
 
-def show_forecast(state, start, n_days, slot_label=None, first=None, oblast=None):
+def print_details(fc, start):
+    """Every fixed 2-hour window (one oblast: each shown day; all oblasts: the first shown day, the rest is in
+    the CSV) and alert durations of the last 28 days before the forecast moment."""
+    one = fc["oblast"].nunique() == 1
+    rows = fc if one else fc[fc["day"] == fc["day"].min()]
+    windows = rows.set_index("day" if one else "oblast")[WINDOW_COLUMNS].mul(100).round().astype(int)
+    windows = windows.astype(str).add("%")
+    windows.columns = [f"{h:02d}–{(h + 2) % 24:02d}" for h in WINDOWS]
+    where = fc["oblast"].iloc[0] if one else f"{rows['day'].iloc[0]} (other days: in the CSV)"
+    print(f"\nChance of an alert at some moment in each 2-hour window (Kyiv time), {where}:")
+    print(windows.to_string())
+    dur = rows.drop_duplicates("oblast").set_index("oblast")[[f"dur_{k}" for k in DURATION_COLUMNS]]
+    dur.columns = DURATION_COLUMNS
+    table = pd.DataFrame({
+        "alerts": dur["alerts"].astype(int),
+        "typical": dur["typical"].map(minutes_text),
+        "most last (10-90%)": [f"{minutes_text(a)} – {minutes_text(b)}" if pd.notna(a) else "—"
+                               for a, b in zip(dur["p10"], dur["p90"])],
+        "shortest": dur["shortest"].map(minutes_text),
+        "average": dur["average"].map(minutes_text),
+        "longest": dur["longest"].map(minutes_text)})
+    print(f"\nAlert durations (eTryvoga alerts with a real end time, last 28 days before {start.date()}):")
+    print(table.to_string())
+    for oblast in dur.index[dur["average"] > 2 * dur["typical"]]:
+        print(f"Note: {oblast}: the average is more than twice the typical — a few very long records "
+              "(possibly missing 'all clear' messages) pull it up.")
+    quiet = list(dur.index[dur["alerts"] == 0])
+    if quiet:
+        print(f"No alerts in the last 28 days: {', '.join(quiet)}.")
+
+
+def show_forecast(state, start, n_days, slot_label=None, first=None, oblast=None, details=False):
     """Forecast only (no evaluation)."""
     fc = forecast(state, start, n_days, parse_slot(slot_label) if slot_label else None)
     print(f"Forecast made on {start.date()} at 00:00 Kyiv, using only data from before then.")
-    return present(fc, start, slot_label, first, oblast)
+    return present(fc, start, slot_label, first, oblast, details)
 
 
-def present(fc, start, slot_label=None, first=None, oblast=None):
-    """Keep the chosen days (from `first`, default the start day) and oblast, print them and save the CSV."""
+def present(fc, start, slot_label=None, first=None, oblast=None, details=False):
+    """Keep the chosen days (from `first`, default the start day) and oblast, print them (with the details
+    for one oblast or when asked) and save the CSV, which says when the forecast was made."""
     first = first if first is not None else start
     fc = fc[fc["day"] >= first.date()]
     if oblast:
         fc = fc[fc["oblast"] == oblast]
     print_forecast(fc, slot_label)
-    print(f"Saved: {save_forecast(fc, first)}")
+    if oblast or details:
+        print_details(fc, start)
+    print(f"Saved: {save_forecast(fc.assign(made_on=start.date()), first)}")
     return fc
 
 
@@ -202,7 +240,7 @@ def save_forecast(fc, start):
     return path
 
 
-def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None, oblast=None):
+def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None, oblast=None, details=False):
     C.REPORTS_DIR.mkdir(exist_ok=True)
     rows, starts, daily, intervals = state["rows"], state["starts"], state["daily"], inputs["intervals"]
     last_full_day = state["end_day"] - pd.Timedelta(days=1)
@@ -272,7 +310,7 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None,
          + table_html(first_day[["expected", "quietest_2h", "riskiest_2h"]], 1)),
     ]
     write_report(C.REPORTS_DIR / "report.html", "Air raid alerts forecast — evaluation", sections)
-    present(fc, fc_start, slot_label, oblast=oblast)  # the HTML report keeps all oblasts
+    present(fc, fc_start, slot_label, oblast=oblast, details=details)  # the HTML report keeps all oblasts
     print(f"Report: {C.REPORTS_DIR / 'report.html'}")
 
 
@@ -328,7 +366,12 @@ def menu_forecast(state, slot_first, fresh):
                + (f" {last.date()}" if last != first else "") + (f" --start {start.date()}" if start != auto else "")
                + (f' --oblast "{oblast}"' if oblast else "") + (f" --slot {slot}" if slot else ""))
     print(f"→ same as: {command}")
-    return show_forecast(state, start, n_days, slot, first=first, oblast=oblast)
+    fc = show_forecast(state, start, n_days, slot, first=first, oblast=oblast)
+    if not oblast and ask("Show details for all oblasts (every 2-hour window, alert durations)? [y/N]",
+                          lambda a: a.lower() in ("y", "yes")):
+        print(f"→ same as: {command} --details")
+        print_details(fc, start)
+    return fc
 
 
 def menu(inputs=None, state=None):
@@ -382,6 +425,8 @@ def main(argv=None):
     parser.add_argument("--days", type=int, choices=range(1, C.MAX_LEAD + 1), metavar="1-7")
     parser.add_argument("--fresh", action="store_true", help="download the latest data first (slow)")
     parser.add_argument("--oblast", help="one oblast, part of the name (e.g. lviv); default: all")
+    parser.add_argument("--details", action="store_true",
+                        help="every 2-hour window and recent alert durations (automatic with --oblast)")
     parser.add_argument("--slot", help="Kyiv time slot like 08:00-09:30: chance of an alert during it")
     args = parser.parse_args(argv)
     make_console_safe()
@@ -400,11 +445,11 @@ def main(argv=None):
     state = build(inputs)
     if for_days:
         start, n = pick_days(for_days[0], for_days[-1], start, state["end_day"])
-        show_forecast(state, start, n, args.slot, first=for_days[0], oblast=oblast)
+        show_forecast(state, start, n, args.slot, first=for_days[0], oblast=oblast, details=args.details)
     elif start is None:
-        run_evaluation(inputs, state, n_days, slot, args.slot, oblast=oblast)
+        run_evaluation(inputs, state, n_days, slot, args.slot, oblast=oblast, details=args.details)
     else:
-        show_forecast(state, start, n_days, args.slot, oblast=oblast)
+        show_forecast(state, start, n_days, args.slot, oblast=oblast, details=args.details)
 
 
 if __name__ == "__main__":

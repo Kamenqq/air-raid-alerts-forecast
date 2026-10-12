@@ -151,7 +151,7 @@ update `report.html`.
 really happened — so you can compare. The forecast still uses only information available on the morning of
 `--start`.
 
-Columns of the CSV: `oblast`, `day`, `expected` (alerts), `actual` (if known), `quietest_2h`, `riskiest_2h`,
+Columns of the CSV: `oblast`, `day`, `expected` (alerts), `actual` (if known), `quietest_2h`, `riskiest_2h`, the 2-hour windows `w00_02` … `w22_00` and durations `dur_…` (Step 6c), `made_on`,
 `slot_chance` (only with `--slot`, Step 6), `chance_00` … `chance_23` (chance of an alert at some moment in each hour,
 0–1). The CSV opens correctly in Excel.
 
@@ -184,6 +184,24 @@ python3 run.py --for 2026-10-14 --oblast lviv
 Type part of the oblast's name in any case (`lviv`, `kharkiv`, `ivano`). If it fits several (`kyiv` → Kyiv City
 and Kyivska oblast) or none, the app lists the names; type more of the name. Names follow the dataset's spelling
 (`odeska`, `sumska`), so `odes` works and `odesa` does not. In the menu, choices 2 and 3 ask for it (Enter = all).
+
+## Step 6c. Details: every 2-hour window and how long alerts last
+
+```bash
+python3 run.py --for 2026-10-14 --oblast lviv     # one oblast: details are shown automatically
+python3 run.py --for 2026-10-14 --details         # all oblasts
+```
+
+- **2-hour windows** — the chance of an alert at some moment in 00–02, 02–04 … 22–00. Only the start day's
+  chances are adjusted by the predicted number of alerts; later days show the oblast's usual pattern, so they
+  repeat. (The "quietest 2 hours" may start at an odd hour, e.g. 13:00–15:00, so it need not be one of these 12.)
+  For all oblasts the screen shows the first chosen day; every day is in the CSV.
+- **Alert durations** — from alerts of the last 28 days before the forecast moment that have a real "all clear"
+  message: *typical* (half the alerts are shorter), *most last* (the middle 80 %), *shortest*, *average*,
+  *longest*. A note appears when a few very long records (often a missing "all clear") pull the average up.
+  This is recent history, not a model.
+- In the menu, after a forecast for all oblasts: "Show details for all oblasts? [y/N]".
+- The CSV also has `made_on`: the day the forecast was made (its start).
 
 ## Step 7. Use the newest data
 

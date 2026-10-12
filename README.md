@@ -35,6 +35,7 @@ runs straight away.
 | `python3 run.py --start 2026-10-01 --days 3` | Forecast only (no evaluation, report not updated) from any day (2026-01-01 … last data day), 1–7 days → `reports/forecast_<date>.csv`. For past days the CSV also shows what actually happened |
 | `python3 run.py --for 2026-10-14` or `--for 2026-10-14 2026-10-16` | Forecast only for the chosen day(s). The start (forecast moment) is chosen automatically: the last data day for future days, the first chosen day for past days, so only earlier data is used. Up to 7 days ahead of the start; `--start` may be added by hand |
 | `python3 run.py --for 2026-10-14 --oblast lviv` | Only one oblast (part of its name, any case; `kyiv` is ambiguous: use `kyiv city` or `kyivska`). Works with every run; the HTML report always covers all oblasts |
+| `python3 run.py --for 2026-10-14 --details` | Adds the chance for each 2-hour window (00–02 … 22–00) and alert durations of the last 28 days (typical, usual range 10–90 %, shortest, average, longest; only alerts with a real end time). Automatic with `--oblast`. Also in the CSV (`w00_02` …, `dur_…`, and `made_on` = when the forecast was made) |
 | `python3 run.py --start 2026-10-11 --slot 15:00-17:00` | Adds the chance of an alert at some moment during that Kyiv time slot, for every oblast and day |
 | `python3 run.py --fresh` | Downloads the latest data first (repo CSVs + new Telegram posts), then the same |
 | `python3 run.py test` | Runs the 70 unit tests |

@@ -30,6 +30,7 @@ class TargetTest(unittest.TestCase):
         official = pd.DataFrame({"oblast": ["Kyiv City"], "start": [pd.Timestamp("2025-09-05 02:00")],
                                  "end": [pd.Timestamp("2025-09-05 03:00")], "source": ["official_csv"]})
         inputs = {"intervals": pd.concat([vol, official], ignore_index=True),  # build() must filter it
+                  "vol": vol.drop(columns="source").assign(naive=False),
                   "chomu": pd.DataFrame({"id": [], "time": pd.to_datetime([]), "text": []})}
         daily = build(inputs)["daily"]
         self.assertEqual(daily.loc["2025-09-05", "Kyiv City"], 1.0)  # the official alert is not counted
@@ -80,7 +81,8 @@ def small_state():
             start = day + pd.Timedelta(hours=8 + 3 * n)
             rows.append(("Kyiv City", start, start + pd.Timedelta(minutes=20), "volunteer_csv"))
     intervals = pd.DataFrame(rows, columns=["oblast", "start", "end", "source"])
-    return build({"intervals": intervals, "chomu": pd.DataFrame({"id": [], "time": pd.to_datetime([]), "text": []})})
+    return build({"intervals": intervals, "vol": intervals.drop(columns="source").assign(naive=False),
+                  "chomu": pd.DataFrame({"id": [], "time": pd.to_datetime([]), "text": []})})
 
 
 class ForecastCutoffTest(unittest.TestCase):
@@ -187,7 +189,7 @@ class MenuTest(unittest.TestCase):
         self.assertIn("1  Test the model on the last 28 days", text)
 
     def test_forecast_from_a_date_asks_again_after_wrong_answers(self):
-        text, _, _ = run_menu(["2", "2025-01-01", "2026-01-28", "2026-01-10 2026-01-11", "2026-01-12", "", "", "", "q"])
+        text, _, _ = run_menu(["2", "2025-01-01", "2026-01-28", "2026-01-10 2026-01-11", "2026-01-12", "", "", "", "", "q"])
         self.assertIn("between 2026-01-01 and 2026-01-20", text)   # day before the allowed range
         self.assertIn("reaches 2026-01-26 at most", text)          # too far ahead
         self.assertIn("after the first chosen day", text)          # manual start after the chosen days
@@ -195,7 +197,7 @@ class MenuTest(unittest.TestCase):
         self.assertIn("Expected number of alerts per day", text)
 
     def test_time_slot_with_default_days_and_start(self):
-        text, _, _ = run_menu(["3", "8-9", "08:00-09:30", "", "", "", "q"])
+        text, _, _ = run_menu(["3", "8-9", "08:00-09:30", "", "", "", "", "q"])
         self.assertIn("--slot must look like 08:00-09:30", text)
         self.assertIn("→ same as: python3 run.py --for 2026-01-20 2026-01-26 --slot 08:00-09:30", text)
         self.assertIn("Chance of an alert at some moment during 08:00-09:30", text)
@@ -314,6 +316,18 @@ class ForDaysTest(unittest.TestCase):
         self.assertNotIn("2026-01-21", text)
         self.assertEqual(saved, ["forecast_2026-01-22.csv"])
 
+    def test_csv_says_when_the_forecast_was_made(self):
+        # leakage audit: runs with different starts write the same file name, so the file must say it
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        import alerts.main as M
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(M.C, "REPORTS_DIR", Path(tmp)):
+            fc = M.forecast(small_state(), pd.Timestamp("2026-01-20"), 3)
+            M.present(fc, pd.Timestamp("2026-01-20"), first=pd.Timestamp("2026-01-22"))
+            saved = pd.read_csv(Path(tmp) / "forecast_2026-01-22.csv")
+        self.assertEqual(set(saved["made_on"]), {"2026-01-20"})
+
     def test_past_days_use_only_data_before_them(self):
         _, spy, _ = run_main(["--for", "2026-01-10", "2026-01-12"])
         self.assertEqual(spy.call_args.kwargs["before_day"], pd.Timestamp("2026-01-10"))  # leakage guard
@@ -357,3 +371,46 @@ class OblastTest(unittest.TestCase):
         self.assertIn("fits several oblasts", text)
         self.assertIn('→ same as: python3 run.py --for 2026-01-22 --oblast "Kyiv City"\n', text)
         self.assertNotIn("Lvivska oblast", text)
+
+
+class DetailsTest(unittest.TestCase):
+    def test_forecast_has_windows_and_durations(self):
+        import alerts.main as M
+        from alerts.details import WINDOWS, durations
+        from alerts.features import blended_slot_chances
+        state, start = small_state(), pd.Timestamp("2026-01-10")
+        fc = M.forecast(state, start, 2)
+        day2 = fc[(fc["oblast"] == "Kyiv City") & (fc["day"] == fc["day"].max())].iloc[0]
+        expected = blended_slot_chances(state["cube"], state["days"], "Kyiv City", start, 2)[WINDOWS]
+        np.testing.assert_allclose(day2[["w00_02", "w02_04", "w04_06", "w06_08", "w08_10", "w10_12", "w12_14",
+                                         "w14_16", "w16_18", "w18_20", "w20_22", "w22_00"]].astype(float), expected)
+        self.assertEqual(day2["dur_alerts"], durations(state["vol"], start).loc["Kyiv City", "alerts"])
+
+    def test_one_oblast_prints_details_all_oblasts_only_when_asked(self):
+        text, _, _ = run_main(["--for", "2026-01-22", "--oblast", "kyiv city"])
+        self.assertIn("each 2-hour window", text)
+        self.assertIn("Alert durations", text)
+        text, _, _ = run_main(["--for", "2026-01-22"])
+        self.assertNotIn("Alert durations", text)
+        text, _, _ = run_main(["--for", "2026-01-22", "--details"])
+        self.assertIn("Alert durations", text)
+        self.assertIn("No alerts in the last 28 days: Cherkaska oblast", text)  # oblasts without alerts
+
+    def test_note_when_long_records_pull_the_average_up(self):
+        import contextlib
+        import io
+        import alerts.main as M
+        from alerts.details import DURATION_COLUMNS, WINDOW_COLUMNS
+        fc = pd.DataFrame([{"oblast": "Ternopilska oblast", "day": pd.Timestamp("2026-10-14").date(),
+                            **{name: 0.1 for name in WINDOW_COLUMNS},
+                            **{f"dur_{k}": v for k, v in zip(DURATION_COLUMNS, (9, 27, 12, 60, 12, 590, 4740))}}])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            M.print_details(fc, pd.Timestamp("2026-10-11"))
+        self.assertIn("Ternopilska oblast: the average is more than twice the typical", out.getvalue())
+        self.assertIn("79 h 0 min", out.getvalue())  # the longest record, 4740 minutes
+
+    def test_menu_offers_details_for_all_oblasts(self):
+        text, _, _ = run_menu(["2", "2026-01-22", "", "", "", "y", "q"])
+        self.assertIn("→ same as: python3 run.py --for 2026-01-22 --details", text)
+        self.assertIn("Alert durations", text)
