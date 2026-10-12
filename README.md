@@ -81,7 +81,8 @@ Calibration of the shown chances (1 day ahead): when the forecast said 35 %, an 
 
 **In plain words:**
 - The count model **ties** "average of the last 7 days" (skill ≈ 0 %): slightly better 1–3 days ahead, slightly
-  worse 4–5 days ahead; both clearly beat "same weekday last week". Bias −0.09 alerts/day. Per oblast: best
+  worse 4–5 days ahead; both clearly beat "same weekday last week". Bias −0.09 alerts/day (−0.11 on Python 3.13–3.15, which install a newer
+  scikit-learn; the errors and Brier scores are the same). Per oblast: best
   Chernivetska (+11 %) and Dnipropetrovska (+10 %), worst Kyiv City (−32 %) and Ivano-Frankivska (−25 %).
 - The **hourly chances are trustworthy as levels** (well calibrated): "about 46 % chance of an alert during an
   evening walk in Kyiv" is a reliable statement. But **which hour is quieter is only a weak hint**: on the test
