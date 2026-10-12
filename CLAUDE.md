@@ -8,6 +8,34 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
 
 **Full design: `docs/superpowers/specs/2026-10-11-air-raid-alerts-forecast-design.md`** (source of truth for details).
 
+## Current status & how to resume (updated 2026-10-12, Kyiv morning)
+- **Done and verified:** `main` on GitHub (github.com/Kamenqq/air-raid-alerts-forecast) at commit `cb16697` (+ this
+  CLAUDE.md update); 64 tests pass; CI green on Ubuntu/macOS/Windows × Python 3.9/3.13. App = daily alert count per
+  oblast (1–7 days) + hourly alert chances, quietest/riskiest 2-hour slots, `--slot HH:MM-HH:MM`; H4 neighbours;
+  security fixes (redacted Telegram posts, version limits, read-only CI token); code-review fixes.
+- **Final results (test 2026-09-13…10-10, measured once):** count MAE 1.97 = last-7-days average 1.97 (tie),
+  bias −0.09; hourly chances Brier 0.1871 vs flat 0.1870 (1 day), 0.1904 vs 0.1893 (7 days), well calibrated
+  (35%→35%, 74%→76%). Validation (2026-08-16…09-12) was used for choices: H4 2.028→2.010; "when" variant A.
+- **Left for the user (deadline Mon 12 Oct 2026, 23:59 Kyiv):** submit the form with (1) repo link, (2) the AI log —
+  exported by the app's session export as a zip in ~/Downloads (made 2026-10-12), (3) ~100-word reflection in the
+  user's own words.
+- **Reflection material:** combining all sources changed the target's meaning on 2026-09-07 (−16% skill; Claude's
+  predicted bias direction was wrong) → experiment → volunteer-only target; H6 mean→median; main window not useful
+  → hourly chances for residents; both approved "when" options lost to a flat baseline on validation → shrinkage
+  variant A; reviewer agents found an untested `--start` cutoff and card numbers in stored posts → fixed; risk checks
+  caught Ukrainian word forms, partial last day, Windows console crash, half-made `.venv`, a test deleting `.venv`,
+  scikit-learn 1.9 crash on an all-empty column (found by CI on Python 3.13).
+- **Open questions (ask the user, don't act alone):** delete the stale remote branch `prototype`? run the
+  `interview-coach` agent (new session) for Stage 3 prep? Option 3 for "when" (separate hourly model) was skipped.
+- **Deferred minors (documented, not fixed):** `--fresh` with a too-early `--start` downloads before rejecting;
+  Telegram first/last collected day counted as complete; numpy "deprecated" warnings on Python 3.13; card numbers
+  remain in old git history (user chose no rewrite); old commits use the user's Gmail (user: leave it).
+- **Local-only files (not in git):** `docs/PROJECT_DESCRIPTION.md` (full project description for the user's review;
+  listed in `.git/info/exclude`), root `official_data_en.csv` / `volunteer_data_en.csv` (ignored).
+- **To resume:** read this file, `README.md`, `docs/PROJECT_DESCRIPTION.md`; run `python3 run.py test`
+  (expect 64 OK) and `python3 run.py`. Keep the working agreements below (one task at a time, risk report +
+  self-check commands, wait for "go").
+
 ## Hard rules
 - Use the most recent data; evaluate on the latest period (time-based split, never random).
 - **No data leakage.** A forecast made at T uses only information available before T — features, baselines,
