@@ -44,11 +44,11 @@ What happens:
 1. **First time only (~1 minute, needs internet):** it creates a private Python environment in a folder
    called `.venv` and installs four libraries into it (pandas, numpy, scikit-learn, matplotlib). Nothing is
    installed into your system Python. Later runs skip this step.
-2. **The menu** lists everything the app can do. Type a number and press Enter; just **Enter** = choice 1:
+2. **The menu** lists everything the app can do. Type a number and press Enter; at the start just **Enter** = choice 1:
 
    ```
    Air raid alerts forecast. Data: stored snapshot, up to 2026-10-11 (Kyiv).
-     1  Test the model on the last 28 days + report + 7-day forecast   (Enter)
+     1  Test the model on the last 28 days + report + 7-day forecast   (Enter at the start)
      2  Forecast from a date you choose (1-7 days)
      3  Chance of an alert during your own time slot (commute, shopping...)
      4  Download the newest data, then do 1

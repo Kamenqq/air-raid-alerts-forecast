@@ -206,3 +206,14 @@ class MenuTest(unittest.TestCase):
         self.assertIn("Download failed after 3 attempts", text)
         load.assert_called_once_with(True)
         evaluation.assert_not_called()  # no fresh data: nothing to evaluate
+
+    def test_broken_fresh_data_keeps_the_menu_alive(self):
+        text, evaluation, _ = run_menu(["4", "q"], load_inputs={"side_effect": ValueError("unexpected columns")})
+        self.assertIn("unexpected columns", text)
+        evaluation.assert_not_called()
+
+    def test_enter_runs_the_evaluation_only_as_the_first_choice(self):
+        # an extra Enter after reading a result must not silently re-run the 20-second evaluation
+        text, evaluation, _ = run_menu(["", "", "q"])
+        evaluation.assert_called_once()
+        self.assertIn("Please type 1-5 or q", text)

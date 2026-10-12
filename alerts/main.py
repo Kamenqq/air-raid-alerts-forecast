@@ -240,7 +240,7 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None)
 
 MENU = """
 Air raid alerts forecast. Data: {source}, up to {end} (Kyiv).
-  1  Test the model on the last 28 days + report + 7-day forecast   (Enter)
+  1  Test the model on the last 28 days + report + 7-day forecast   (Enter at the start)
   2  Forecast from a date you choose (1-7 days)
   3  Chance of an alert during your own time slot (commute, shopping...)
   4  Download the newest data, then do 1
@@ -287,12 +287,13 @@ def menu_forecast(state, slot_first, fresh):
 
 def menu(inputs, state):
     """The menu shown when a person types python3 run.py without options; back to it after every choice."""
-    fresh = False
+    fresh, default = False, "1"
     try:
         while True:
             print(MENU.format(source="newest download" if fresh else "stored snapshot",
                               end=state["end_day"].date()))
-            choice = input("Choose [1]: ").strip().lower() or "1"
+            choice = input(f"Choose [{default}]: " if default else "Choose: ").strip().lower() or default
+            default = ""  # Enter = 1 only at the start: a stray Enter later must not re-run the evaluation
             if choice == "1":
                 run_evaluation(inputs, state)
             elif choice in ("2", "3"):
@@ -301,7 +302,7 @@ def menu(inputs, state):
                 print("→ same as: python3 run.py --fresh")
                 try:
                     inputs = load_inputs(True)
-                except RuntimeError as error:  # no internet / source down: keep the data we have
+                except Exception as error:  # no internet, source down or changed: keep the data we have
                     print(f"  {error}")
                     continue
                 state, fresh = build(inputs), True
