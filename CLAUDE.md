@@ -8,32 +8,46 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
 
 **Full design: `docs/superpowers/specs/2026-10-11-air-raid-alerts-forecast-design.md`** (source of truth for details).
 
-## Current status & how to resume (updated 2026-10-12, Kyiv morning)
-- **Done and verified:** `main` on GitHub (github.com/Kamenqq/air-raid-alerts-forecast) at commit `cb16697` (+ this
-  CLAUDE.md update); 64 tests pass; CI green on Ubuntu/macOS/Windows × Python 3.9/3.13. App = daily alert count per
-  oblast (1–7 days) + hourly alert chances, quietest/riskiest 2-hour slots, `--slot HH:MM-HH:MM`; H4 neighbours;
-  security fixes (redacted Telegram posts, version limits, read-only CI token); code-review fixes.
+## Current status & how to resume (updated 2026-10-12, Kyiv afternoon)
+- **Done and verified:** `main` on GitHub (github.com/Kamenqq/air-raid-alerts-forecast); 98 tests pass; CI green on
+  Ubuntu/macOS/Windows × Python 3.9/3.13/3.14/3.15 (pandas 3 only on 3.15, where pandas 2 has no build). App = daily
+  alert count per oblast (1–7 days) + hourly alert chances, quietest/riskiest 2-hour slots, `--slot`; H4 neighbours;
+  security and code-review fixes. **Added 2026-10-12:** interactive **menu** for `python3 run.py` typed by a person
+  (no menu without a terminal, so CI is unchanged); `--for DAY [LAST]` with an **automatic start** (latest moment not
+  after the first chosen day; refusals for leaks / > 7 days); `--oblast` (part of the name); **details**
+  (`--details`, automatic for one oblast): 12 two-hour windows + alert durations of the last 28 days; CSV `made_on`.
+  Spec/plan: `docs/superpowers/specs|plans/2026-10-12-days-oblast-details*`. Two leakage audits (cut-at-T reruns)
+  and a whole-branch review: no leak; review fixes applied.
 - **Final results (test 2026-09-13…10-10, measured once):** count MAE 1.97 = last-7-days average 1.97 (tie),
-  bias −0.09; hourly chances Brier 0.1871 vs flat 0.1870 (1 day), 0.1904 vs 0.1893 (7 days), well calibrated
-  (35%→35%, 74%→76%). Validation (2026-08-16…09-12) was used for choices: H4 2.028→2.010; "when" variant A.
+  bias −0.09 (−0.11 on Python 3.13+, newer scikit-learn); hourly chances Brier 0.1871 vs flat 0.1870 (1 day),
+  0.1904 vs 0.1893 (7 days), well calibrated (35%→35%, 74%→76%). Validation (2026-08-16…09-12) was used for
+  choices: H4 2.028→2.010; "when" variant A. **Details checks (measured once):** 2-hour windows calibrated from
+  ~40% up (45→46, 86→86) but low chances run low (25%→38%); durations MAE 18.8 min (typical of last 28 days) vs
+  19.6 (all history), usual 10–90% range held 80% of alerts. Honesty: displayed duration stats and the 2× warning
+  were chosen after viewing test-period durations (said in README and report).
 - **Left for the user (deadline Mon 12 Oct 2026, 23:59 Kyiv):** submit the form with (1) repo link, (2) the AI log —
-  exported by the app's session export as a zip in ~/Downloads (made 2026-10-12), (3) ~100-word reflection in the
-  user's own words.
+  **re-export it** (the morning zip in ~/Downloads predates the menu/--for/--oblast/details session), (3) ~100-word
+  reflection in the user's own words.
 - **Reflection material:** combining all sources changed the target's meaning on 2026-09-07 (−16% skill; Claude's
   predicted bias direction was wrong) → experiment → volunteer-only target; H6 mean→median; main window not useful
   → hourly chances for residents; both approved "when" options lost to a flat baseline on validation → shrinkage
   variant A; reviewer agents found an untested `--start` cutoff and card numbers in stored posts → fixed; risk checks
   caught Ukrainian word forms, partial last day, Windows console crash, half-made `.venv`, a test deleting `.venv`,
-  scikit-learn 1.9 crash on an all-empty column (found by CI on Python 3.13).
+  scikit-learn 1.9 crash on an all-empty column (found by CI on Python 3.13). 2026-10-12: Python 3.15 released 3 days
+  earlier would have broken installs (pandas 2 had no build) → caught by checking wheels, fixed before reviewers hit
+  it; user tested the app and asked for usability (menu, choose days, one oblast, details); reviewers found wrong
+  "use newer data" advice and a CSV that did not say when the forecast was made → fixed.
 - **Open questions (ask the user, don't act alone):** delete the stale remote branch `prototype`? run the
   `interview-coach` agent (new session) for Stage 3 prep? Option 3 for "when" (separate hourly model) was skipped.
 - **Deferred minors (documented, not fixed):** `--fresh` with a too-early `--start` downloads before rejecting;
   Telegram first/last collected day counted as complete; numpy "deprecated" warnings on Python 3.13; card numbers
-  remain in old git history (user chose no rewrite); old commits use the user's Gmail (user: leave it).
+  remain in old git history (user chose no rewrite); old commits use the user's Gmail (user: leave it). From the
+  2026-10-12 review: a `--for` date error mentions `--start`; "most last" vs "usual range" naming; `--oblast`
+  matches official spellings only (`odes`, not `odesa`); interactive menu never driven by a person on Windows.
 - **Local-only files (not in git):** `docs/PROJECT_DESCRIPTION.md` (full project description for the user's review;
   listed in `.git/info/exclude`), root `official_data_en.csv` / `volunteer_data_en.csv` (ignored).
 - **To resume:** read this file, `README.md`, `docs/PROJECT_DESCRIPTION.md`; run `python3 run.py test`
-  (expect 64 OK) and `python3 run.py`. Keep the working agreements below (one task at a time, risk report +
+  (expect 98 OK) and `python3 run.py`. Keep the working agreements below (one task at a time, risk report +
   self-check commands, wait for "go").
 
 ## Hard rules
@@ -46,7 +60,7 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
 - **Reproducibility:** the review committee must be able to simply clone the repo and run it.
   No manual steps, logins, API keys or machine-specific paths. Python 3.9+ on macOS/Linux/Windows.
   `python3 run.py` (stdlib launcher → `.venv` → `requirements.txt`) is the one command; GitHub Actions CI
-  (3 OS × Python 3.9/3.13) is the proof; manual `pip install -r requirements.txt` is the README fallback.
+  (3 OS × Python 3.9/3.13/3.14/3.15) is the proof; manual `pip install -r requirements.txt` is the README fallback.
   If a library can't work everywhere and can't be fixed quickly → standard library only.
 
 ## Agreed design (summary)
@@ -69,6 +83,11 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
   for 1 day ahead only (still shown for all 7 days). Test: ties flat, well calibrated. Option 3 (separate hourly
   model) reminded and **skipped by the user** (2026-10-12). (3) Decide what to keep on a
   **validation period = the 28 days before the test period**, then report the test period once.
+- **Decisions 2026-10-12 (round 3, user tested the app):** menu = numbered (stdlib, no arrow keys), back to the
+  menu after each choice, Enter = 1 only at the start; `--for` takes **dates only** (no weekday words); days > 7
+  ahead of the start are **refused** with the furthest day; one oblast → **details at once**, all oblasts → details
+  on request; details = **12 fixed two-hour windows** + **all** duration numbers (typical, 10–90% range, shortest,
+  average, longest, 2× warning); both new outputs **measured once** on the test period, nothing changed after.
 - Count model: `HistGradientBoostingRegressor(loss="poisson")`, retrained for each forecast time, no tuning.
   Baselines: last-7-days mean; same weekday last week. Metrics: MAE, skill vs best baseline, bias;
   hourly chances: Brier score vs 'same chance every hour', calibration table. Test = last 28 full days of the snapshot.

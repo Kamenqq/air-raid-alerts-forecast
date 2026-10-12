@@ -38,7 +38,7 @@ runs straight away.
 | `python3 run.py --for 2026-10-14 --details` | Adds the chance for each 2-hour window (00–02 … 22–00) and alert durations of the last 28 days (typical, usual range 10–90 %, shortest, average, longest; only alerts with a real end time). Automatic with `--oblast`. Also in the CSV (`w00_02` …, `dur_…`, and `made_on` = when the forecast was made) |
 | `python3 run.py --start 2026-10-11 --slot 15:00-17:00` | Adds the chance of an alert at some moment during that Kyiv time slot, for every oblast and day |
 | `python3 run.py --fresh` | Downloads the latest data first (repo CSVs + new Telegram posts), then the same |
-| `python3 run.py test` | Runs the 70 unit tests |
+| `python3 run.py test` | Runs the 98 unit tests |
 
 Requirements: Python 3.9+ on macOS, Linux or Windows. Fallback if `.venv` cannot be created
 (e.g. Debian/Ubuntu without `python3-venv`): `pip install -r requirements.txt`, then `python -m alerts.main`.
@@ -183,7 +183,7 @@ downloaded posts, payment card numbers, links, emails and @usernames are replace
 run.py                one-command launcher (standard library only)
 alerts/               config, parse, sources, snapshot, episodes, features, model, evaluate, report, main
 data/snapshot/        frozen data used by the default run; data/region_map.csv (Ukrainian raion → oblast)
-tests/                70 unit tests (python3 run.py test)
+tests/                98 unit tests (python3 run.py test)
 docs/superpowers/     design spec and implementation plan
 .claude/agents/       project agents: leakage-auditor, repro-tester, data-checker, interview-coach
 ```

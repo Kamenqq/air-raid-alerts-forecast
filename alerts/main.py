@@ -1,4 +1,5 @@
-"""python3 run.py [--start YYYY-MM-DD] [--days N] [--fresh]
+"""python3 run.py [--for DAY [LAST] | --start YYYY-MM-DD [--days N]] [--oblast NAME] [--details] [--slot HH:MM-HH:MM]
+                 [--fresh]
 
 Without --start: full evaluation on the last 28 days + HTML report + forecast from the last data day.
 With --start: only the forecast for --days days starting that Kyiv date.
@@ -61,8 +62,13 @@ def pick_days(first, last, start, end_day):
     check_start(start, end_day)
     furthest = start + pd.Timedelta(days=C.MAX_LEAD - 1)
     if last > furthest:
+        if start == end_day:  # only here can newer data help
+            hint = "For later days use newer data (menu 4 / --fresh)."
+        else:
+            hint = f"Choose days up to {furthest.date()}" + \
+                (f", or a later --start (up to {first.date()})." if start < first else ".")
         raise SystemExit(f"The model forecasts at most {C.MAX_LEAD} days ahead: a forecast made on {start.date()} "
-                         f"reaches {furthest.date()} at most. For later days use newer data (menu 4 / --fresh).")
+                         f"reaches {furthest.date()} at most. {hint}")
     return start, (last - start).days + 1
 
 
@@ -307,6 +313,9 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None,
          + f"<p class='note'>Calibration ({chosen}, 1 day ahead): when we said X%, how often was there an alert?</p>"
          + table_html(cal, 2)
          + "<h3>Details checks (measured once on the test period; nothing was changed because of them)</h3>"
+           "<p class='note'>Honesty note: which duration statistics to show (typical, usual range, shortest, "
+           "average, longest) and the 'average more than twice the typical' warning were chosen after looking at "
+           "durations in this same period; no number behind these results was tuned.</p>"
            "<p class='note'>2-hour windows (00–02 … 22–00), 1 day ahead: when we said X%, how often was there "
            "an alert at some moment in the window?</p>" + table_html(window_cal, 2)
          + "<p class='note'>Alert durations: each test-period alert with a real end, its duration predicted at "

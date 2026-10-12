@@ -281,8 +281,14 @@ class PickDaysTest(unittest.TestCase):
         self.assertIn("after the first chosen day", self.refused("2026-10-14", None, "2026-10-15"))
 
     def test_too_far(self):
-        self.assertIn("reaches 2026-10-17 at most", self.refused("2026-10-18"))
-        self.assertIn("reaches 2026-10-11 at most", self.refused("2026-10-05", "2026-10-14"))
+        future = self.refused("2026-10-18")
+        self.assertIn("reaches 2026-10-17 at most", future)
+        self.assertIn("--fresh", future)                         # newer data would help here
+        past = self.refused("2026-10-05", "2026-10-14")
+        self.assertIn("reaches 2026-10-11 at most", past)
+        self.assertNotIn("--fresh", past)                        # ...but not for a past range
+        self.assertIn("Choose days up to 2026-10-11", past)
+        self.assertIn("or a later --start (up to 2026-10-14)", self.refused("2026-10-14", "2026-10-15", "2026-10-08"))
 
     def test_bad_ranges(self):
         self.assertIn("before the first day", self.refused("2026-10-14", "2026-10-13"))

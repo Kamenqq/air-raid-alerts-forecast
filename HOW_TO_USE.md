@@ -59,7 +59,7 @@ What happens:
 
    Choices 2 and 3 ask which days you want, when the forecast is made (Enter = automatic) and the time slot one by one (Enter takes the value in
    `[brackets]`); a wrong answer shows what is wrong and asks again. Each choice prints the **equivalent
-   command** (`→ same as: python3 run.py --start …`), which is what Steps 5–8 describe. After a choice the menu
+   command** (`→ same as: python3 run.py --for …`), which is what Steps 5–8 describe. After a choice the menu
    comes back; Ctrl-C stops a running choice, `q` quits. The data is loaded (~2 s) on the first choice that needs it. The menu appears only when you run `python3 run.py` without options in a
    terminal.
 3. **Evaluation (~20 seconds, choice 1):** using the data stored in the project (`data/snapshot/`), it tests the model
@@ -226,7 +226,7 @@ recent as that.
 python3 run.py test
 ```
 
-Runs the 70 automatic checks — including the **leakage test**, which proves the forecast never uses information
+Runs the 98 automatic checks — including the **leakage test**, which proves the forecast never uses information
 from after the moment it is made. Expected last line: `OK`. A few lines like `Creating a private environment…`
 or `Downloading https://example.invalid/x.csv` may appear in between — they come from tests that simulate
 those situations and are not errors.
