@@ -6,7 +6,11 @@ A Python app that forecasts, **for each of 24 oblasts and each of the next 1–7
 
 - **how many air raid alerts** will start that day;
 - **when** — the **chance that an alert is active at some moment in each hour** (Kyiv time), the **quietest and
-  riskiest 2-hour slots**, and the chance for **any time slot you ask about** (e.g. your commute: `--slot 08:00-09:30`).
+  riskiest 2-hour slots**, and the chance for **any time slot you ask about** (e.g. your commute: `--slot 08:00-09:30`);
+- **how long** alerts usually last there (recent history: typical duration, usual range, shortest / average / longest).
+
+You can choose the **days** you want (`--for 2026-10-14`; the forecast moment is picked automatically so only
+earlier data is used), **one oblast** (`--oblast lviv`) and **details** (every 2-hour window, alert durations).
 
 It is evaluated honestly on the latest 28 days against simple baselines, with no information from after the
 moment a forecast is made. Built for the KSE Agentic AI School (Stage 2).
@@ -25,7 +29,8 @@ The first run creates a private environment in `.venv` and installs pandas, nump
 (needs internet, ~1 minute). Then it shows a **menu** of everything the app can do; press Enter for the main run:
 the 28-day evaluation on the data snapshot in the repo (~20 seconds), a 7-day forecast and the outputs in the
 `reports/` folder (`report.html`, `backtest.csv`, `forecast_<date>.csv`; the folder is created by the run and not
-stored in git). Other choices ask for a date, days or a time slot step by step and print the equivalent command.
+stored in git). Other choices ask step by step which days you want, when the forecast is made (automatic by
+default), the oblast and the time slot, and print the equivalent command.
 The menu appears only for a person in a terminal: with options, or without a terminal (CI, scripts), the app
 runs straight away.
 
@@ -123,7 +128,10 @@ Calibration of the shown chances (1 day ahead): when the forecast said 35 %, an 
    active. The shown chance for an hour = half the oblast's own share of days with an alert in that hour + half its
    average over all hours, over the last 56 days; for 1 day ahead it is scaled by the predicted count (busier day →
    higher chances). Slots (2-hour, `--slot`) use the same rule.
-6. **Evaluation** (`alerts/evaluate.py`) and **report** (`alerts/report.py`).
+6. **Details** (`alerts/details.py`): the chance for each fixed 2-hour window (00–02 … 22–00, same rule as the
+   slots) and alert durations from eTryvoga alerts of the 28 days before the forecast moment that have a real end
+   (alerts still running at that moment are left out, so nothing after it is used).
+7. **Evaluation** (`alerts/evaluate.py`) and **report** (`alerts/report.py`).
 
 **Choices were made on a validation period, not on the test.** Whether to keep the neighbour features (H4) and which
 "when" method to show were decided on the 28 days *before* the test period (2026-08-16 … 09-12); the test period was
@@ -181,10 +189,10 @@ downloaded posts, payment card numbers, links, emails and @usernames are replace
 
 ```
 run.py                one-command launcher (standard library only)
-alerts/               config, parse, sources, snapshot, episodes, features, model, evaluate, report, main
+alerts/               config, parse, sources, snapshot, episodes, features, model, details, evaluate, report, main
 data/snapshot/        frozen data used by the default run; data/region_map.csv (Ukrainian raion → oblast)
 tests/                98 unit tests (python3 run.py test)
-docs/superpowers/     design spec and implementation plan
+docs/superpowers/     design specs and implementation plans
 .claude/agents/       project agents: leakage-auditor, repro-tester, data-checker, interview-coach
 ```
 

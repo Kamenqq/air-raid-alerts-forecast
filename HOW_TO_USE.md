@@ -57,8 +57,9 @@ What happens:
    Choose [1]:
    ```
 
-   Choices 2 and 3 ask which days you want, when the forecast is made (Enter = automatic) and the time slot one by one (Enter takes the value in
-   `[brackets]`); a wrong answer shows what is wrong and asks again. Each choice prints the **equivalent
+   Choices 2 and 3 ask one by one which days you want, when the forecast is made (Enter = automatic), the oblast
+   (Enter = all) and the time slot (Enter takes the value in `[brackets]`); a wrong answer shows what is wrong and
+   asks again. After a forecast for all oblasts they offer the details ("Show details? [y/N]", Step 6c). Each choice prints the **equivalent
    command** (`→ same as: python3 run.py --for …`), which is what Steps 5–8 describe. After a choice the menu
    comes back; Ctrl-C stops a running choice, `q` quits. The data is loaded (~2 s) on the first choice that needs it. The menu appears only when you run `python3 run.py` without options in a
    terminal.
@@ -245,6 +246,11 @@ those situations and are not errors.
 | `--start must be between 2026-01-01 and ...` | Pick a date inside the range shown. |
 | `argument --days: invalid choice` | Use a number from 1 to 7. |
 | `--slot must look like 08:00-09:30` | Write the slot as two Kyiv times with a dash, e.g. `07:30-08:15`. |
+| `--for must be a date like 2026-10-05` | Write each day as year-month-day with dashes; one day or two (first and last). |
+| `The model forecasts at most 7 days ahead … reaches … at most` | Choose days up to the date shown; for later days in the future, use newer data (menu 4 / `--fresh`). |
+| `--start … is after the first chosen day` | The forecast must be made before the days it forecasts: pick an earlier `--start`, or leave it out (automatic). |
+| `Use either --for (which days) or --days (how many), not both.` | `--for` already says which days; drop `--days`. |
+| `--oblast '…' fits several oblasts` / `fits no oblast` | Type more of the name (`kyiv city`, `kyivska`), or use the dataset's spelling from the list shown (`odes`, not `odesa`). |
 | An error ending in `Download failed after 3 attempts` (with `--fresh`) | No internet or the source is unavailable; run without `--fresh` to use the stored data. |
 | A `?` instead of a symbol in the output (Windows) | Harmless: the console cannot show that symbol. |
 | A "DeprecationWarning" about NumPy (Python 3.13) | Harmless warning from the libraries; the results are not affected. |
