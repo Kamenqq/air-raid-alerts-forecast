@@ -187,7 +187,7 @@ class MenuTest(unittest.TestCase):
         self.assertIn("1  Test the model on the last 28 days", text)
 
     def test_forecast_from_a_date_asks_again_after_wrong_answers(self):
-        text, _, _ = run_menu(["2", "2025-01-01", "2026-01-28", "2026-01-10 2026-01-11", "2026-01-12", "", "", "q"])
+        text, _, _ = run_menu(["2", "2025-01-01", "2026-01-28", "2026-01-10 2026-01-11", "2026-01-12", "", "", "", "q"])
         self.assertIn("between 2026-01-01 and 2026-01-20", text)   # day before the allowed range
         self.assertIn("reaches 2026-01-26 at most", text)          # too far ahead
         self.assertIn("after the first chosen day", text)          # manual start after the chosen days
@@ -195,7 +195,7 @@ class MenuTest(unittest.TestCase):
         self.assertIn("Expected number of alerts per day", text)
 
     def test_time_slot_with_default_days_and_start(self):
-        text, _, _ = run_menu(["3", "8-9", "08:00-09:30", "", "", "q"])
+        text, _, _ = run_menu(["3", "8-9", "08:00-09:30", "", "", "", "q"])
         self.assertIn("--slot must look like 08:00-09:30", text)
         self.assertIn("→ same as: python3 run.py --for 2026-01-20 2026-01-26 --slot 08:00-09:30", text)
         self.assertIn("Chance of an alert at some moment during 08:00-09:30", text)
@@ -325,3 +325,35 @@ class ForDaysTest(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 run_main(args)
             self.assertIn(message, str(ctx.exception.code))
+
+
+class OblastTest(unittest.TestCase):
+    def test_match(self):
+        from alerts.main import match_oblast
+        self.assertEqual(match_oblast("kyiv city"), "Kyiv City")
+        self.assertEqual(match_oblast("  LVIV "), "Lvivska oblast")
+        self.assertEqual(match_oblast("ivano"), "Ivano-Frankivska oblast")
+        for text, message in (("kyiv", "several oblasts: Kyiv City, Kyivska oblast"),
+                              ("odesa", "fits no oblast"), ("", "fits no oblast")):
+            with self.assertRaises(SystemExit) as ctx:
+                match_oblast(text)
+            self.assertIn(message, str(ctx.exception.code))
+
+    def test_forecast_for_one_oblast(self):
+        text, _, _ = run_main(["--for", "2026-01-22", "--oblast", "kyiv city"])
+        self.assertIn("Kyiv City", text)
+        self.assertNotIn("Lvivska oblast", text)
+
+    def test_evaluation_run_gets_the_oblast(self):
+        from unittest import mock
+        import alerts.main as M
+        with mock.patch.object(M, "load_inputs", return_value={}), mock.patch.object(M, "build", return_value={}), \
+                mock.patch.object(M, "run_evaluation") as evaluation:
+            M.main(["--oblast", "lviv"])
+        self.assertEqual(evaluation.call_args.kwargs["oblast"], "Lvivska oblast")
+
+    def test_menu_asks_for_the_oblast(self):
+        text, _, _ = run_menu(["2", "2026-01-22", "", "kyiv", "kyiv city", "", "q"])
+        self.assertIn("fits several oblasts", text)
+        self.assertIn('→ same as: python3 run.py --for 2026-01-22 --oblast "Kyiv City"\n', text)
+        self.assertNotIn("Lvivska oblast", text)

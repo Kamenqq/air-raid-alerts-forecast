@@ -77,6 +77,20 @@ def parse_slot(text):
     raise SystemExit(f"--slot must look like 08:00-09:30 (Kyiv time), got: {text!r}")
 
 
+def match_oblast(text):
+    """Part of an oblast name, any case -> its full name. Several or no matches: a message listing them.
+    shortcut: matches the official spelling only ('odes', not 'odesa'); add city names if people trip on it."""
+    wanted = " ".join(text.lower().split())
+    found = [o for o in C.OBLASTS if o.lower() == wanted] or \
+        [o for o in C.OBLASTS if wanted and wanted in o.lower()]
+    if len(found) == 1:
+        return found[0]
+    if found:
+        raise SystemExit(f"--oblast {text!r} fits several oblasts: {', '.join(found)}. Type more of the name.")
+    raise SystemExit(f"--oblast {text!r} fits no oblast. Oblasts: {', '.join(C.OBLASTS)} "
+                     "(Luhansk and Crimea are not forecast: alerts there never stop).")
+
+
 def slot_text(chances, hour):
     return f"{hour:02d}:00–{(hour + 2) % 24:02d}:00 {chances[hour]:.0%}"
 
@@ -163,17 +177,19 @@ def print_forecast(fc, slot_label=None):
             print(percent.astype(str).add("%").to_string())
 
 
-def show_forecast(state, start, n_days, slot_label=None, first=None):
+def show_forecast(state, start, n_days, slot_label=None, first=None, oblast=None):
     """Forecast only (no evaluation)."""
     fc = forecast(state, start, n_days, parse_slot(slot_label) if slot_label else None)
     print(f"Forecast made on {start.date()} at 00:00 Kyiv, using only data from before then.")
-    return present(fc, start, slot_label, first)
+    return present(fc, start, slot_label, first, oblast)
 
 
-def present(fc, start, slot_label=None, first=None):
-    """Keep the chosen days (from `first`, default the start day), print them and save the CSV."""
+def present(fc, start, slot_label=None, first=None, oblast=None):
+    """Keep the chosen days (from `first`, default the start day) and oblast, print them and save the CSV."""
     first = first if first is not None else start
     fc = fc[fc["day"] >= first.date()]
+    if oblast:
+        fc = fc[fc["oblast"] == oblast]
     print_forecast(fc, slot_label)
     print(f"Saved: {save_forecast(fc, first)}")
     return fc
@@ -186,7 +202,7 @@ def save_forecast(fc, start):
     return path
 
 
-def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None):
+def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None, oblast=None):
     C.REPORTS_DIR.mkdir(exist_ok=True)
     rows, starts, daily, intervals = state["rows"], state["starts"], state["daily"], inputs["intervals"]
     last_full_day = state["end_day"] - pd.Timedelta(days=1)
@@ -256,7 +272,7 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None)
          + table_html(first_day[["expected", "quietest_2h", "riskiest_2h"]], 1)),
     ]
     write_report(C.REPORTS_DIR / "report.html", "Air raid alerts forecast — evaluation", sections)
-    present(fc, fc_start, slot_label)
+    present(fc, fc_start, slot_label, oblast=oblast)  # the HTML report keeps all oblasts
     print(f"Report: {C.REPORTS_DIR / 'report.html'}")
 
 
@@ -305,13 +321,14 @@ def menu_forecast(state, slot_first, fresh):
     auto = min(first, end_day)
     start, n_days = ask(f"Forecast made on, YYYY-MM-DD [automatic = {auto.date()}]",
                         lambda a: pick_days(first, last, parse_start(a) if a else None, end_day))
+    oblast = ask("Oblast, part of the name, e.g. lviv [Enter = all]", lambda a: match_oblast(a) if a else None)
     if not slot_first:
         slot = ask("Time slot, Kyiv time, e.g. 08:00-09:30 (Enter = skip)", lambda a: slot_answer(a, False))
     command = ("python3 run.py" + (" --fresh" if fresh else "") + f" --for {first.date()}"
                + (f" {last.date()}" if last != first else "") + (f" --start {start.date()}" if start != auto else "")
-               + (f" --slot {slot}" if slot else ""))
+               + (f' --oblast "{oblast}"' if oblast else "") + (f" --slot {slot}" if slot else ""))
     print(f"→ same as: {command}")
-    return show_forecast(state, start, n_days, slot, first=first)
+    return show_forecast(state, start, n_days, slot, first=first, oblast=oblast)
 
 
 def menu(inputs=None, state=None):
@@ -364,6 +381,7 @@ def main(argv=None):
                         help="the day(s) to forecast, YYYY-MM-DD or FIRST LAST; the start is chosen automatically")
     parser.add_argument("--days", type=int, choices=range(1, C.MAX_LEAD + 1), metavar="1-7")
     parser.add_argument("--fresh", action="store_true", help="download the latest data first (slow)")
+    parser.add_argument("--oblast", help="one oblast, part of the name (e.g. lviv); default: all")
     parser.add_argument("--slot", help="Kyiv time slot like 08:00-09:30: chance of an alert during it")
     args = parser.parse_args(argv)
     make_console_safe()
@@ -375,17 +393,18 @@ def main(argv=None):
     if for_days and args.days is not None:
         raise SystemExit("Use either --for (which days) or --days (how many), not both.")
     n_days = args.days or C.MAX_LEAD
+    oblast = match_oblast(args.oblast) if args.oblast is not None else None
     start = parse_start(args.start) if args.start is not None else None  # "" is an invalid date, not "absent"
     slot = parse_slot(args.slot) if args.slot is not None else None
     inputs = load_inputs(args.fresh)
     state = build(inputs)
     if for_days:
         start, n = pick_days(for_days[0], for_days[-1], start, state["end_day"])
-        show_forecast(state, start, n, args.slot, first=for_days[0])
+        show_forecast(state, start, n, args.slot, first=for_days[0], oblast=oblast)
     elif start is None:
-        run_evaluation(inputs, state, n_days, slot, args.slot)
+        run_evaluation(inputs, state, n_days, slot, args.slot, oblast=oblast)
     else:
-        show_forecast(state, start, n_days, args.slot)
+        show_forecast(state, start, n_days, args.slot, oblast=oblast)
 
 
 if __name__ == "__main__":

@@ -175,6 +175,16 @@ Dnipropetrovska oblast          94%         93%
 Slots are counted in whole hours (`08:00-09:30` covers the hours 8 and 9) and may cross midnight
 (`23:00-01:00`). It also works with the default run: `python3 run.py --slot 15:00-17:00`.
 
+## Step 6b. Only your oblast
+
+```bash
+python3 run.py --for 2026-10-14 --oblast lviv
+```
+
+Type part of the oblast's name in any case (`lviv`, `kharkiv`, `ivano`). If it fits several (`kyiv` → Kyiv City
+and Kyivska oblast) or none, the app lists the names; type more of the name. Names follow the dataset's spelling
+(`odeska`, `sumska`), so `odes` works and `odesa` does not. In the menu, choices 2 and 3 ask for it (Enter = all).
+
 ## Step 7. Use the newest data
 
 ```bash
