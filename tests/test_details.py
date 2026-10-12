@@ -44,3 +44,20 @@ class DurationsTest(unittest.TestCase):
         self.assertEqual(WINDOW_COLUMNS[0], "w00_02")
         self.assertEqual(WINDOW_COLUMNS[-1], "w22_00")
         self.assertTrue(all(name.isascii() for name in WINDOW_COLUMNS))
+
+
+class DurationCheckTest(unittest.TestCase):
+    def test_typical_of_last_28_days_vs_all_history(self):
+        from alerts.details import duration_check
+        vol = pd.DataFrame([
+            *(alert("Kyiv City", f"2025-11-2{i} 10:00", 100) for i in range(4)),   # old history: long alerts
+            alert("Kyiv City", "2026-01-01 10:00", 10),
+            alert("Kyiv City", "2026-01-02 10:00", 20),
+            alert("Kyiv City", "2026-01-03 10:00", 30),
+            alert("Kyiv City", "2026-01-10 10:00", 25),                             # the test-day alert
+        ], columns=["oblast", "start", "end", "naive"])
+        table, inside = duration_check(vol, pd.date_range("2026-01-10", "2026-01-10"))
+        mae = table.set_index("method")["MAE, minutes"]
+        self.assertEqual(mae["typical of the last 28 days"], 5)     # |25 - 20|
+        self.assertEqual(mae["typical over all history"], 75)        # |25 - median(10,20,30,100,100,100,100)|
+        self.assertEqual(inside, 1.0)                                # 25 is inside 12–28 (10–90 % of 10, 20, 30)

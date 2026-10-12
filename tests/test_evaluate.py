@@ -67,3 +67,15 @@ class ChanceScoreTest(unittest.TestCase):
         self.assertEqual(int(table["hours"].sum()), 24)
         self.assertEqual(table.loc["50–60%", "observed"], 1.0)           # hour 22 shown as ~52%
         self.assertEqual(table.loc["0–10%", "observed"], 0.0)
+
+
+class WindowCalibrationTest(unittest.TestCase):
+    def test_two_hour_windows(self):
+        from tests.test_main import small_state
+        from alerts.evaluate import backtest, calibration
+        state = small_state()
+        bt = backtest(state["rows"], pd.date_range("2026-01-12", "2026-01-12"))
+        table = calibration(bt, state["cube"], state["days"], two_hour=True)
+        self.assertIn("windows", table.columns)
+        self.assertEqual(table["windows"].sum(), 12 * (bt["lead_days"] == 1).sum())
+        self.assertTrue(((table["observed"] >= 0) & (table["observed"] <= 1)).all())

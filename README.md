@@ -85,6 +85,16 @@ Zakarpatska oblast                 —                 —      (no alerts in th
 Calibration of the shown chances (1 day ahead): when the forecast said 35 %, an alert happened 35 % of the time;
 45 % → 46 %; 74 % → 76 %; only the lowest chances run a bit low (3 % → 6 %).
 
+**Details checks** (added 2026-10-12, measured once on the same test period; nothing was changed because of them):
+- *2-hour windows* (`--details`), 1 day ahead: well calibrated from about 40 % up (45 % → 46 %, 55 % → 57 %,
+  65 % → 64 %, 86 % → 86 %), but **low chances run too low** (3 % → 7 %, 15 % → 23 %, 25 % → 38 %): a "quiet"
+  window is less quiet than it looks.
+- *Alert durations*: guessing each alert lasts "the typical duration of the last 28 days" is off by 18.8 minutes
+  on average (3960 alerts), vs 19.6 for "the typical duration over all history" — recent history helps only a
+  little; single alerts are hard to predict. The "usual range" (10–90 %) held 80 % of the alerts, exactly as it
+  should. Honesty note: the statistics to show (typical, range, min/average/max) and the "average > 2 × typical"
+  warning were chosen after looking at durations in these same 28 days; no number behind these results was tuned.
+
 **In plain words:**
 - The count model **ties** "average of the last 7 days" (skill ≈ 0 %): slightly better 1–3 days ahead, slightly
   worse 4–5 days ahead; both clearly beat "same weekday last week". Bias −0.09 alerts/day (−0.11 on Python 3.13–3.15, which install a newer

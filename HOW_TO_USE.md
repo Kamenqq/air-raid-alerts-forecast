@@ -112,7 +112,8 @@ Open **`reports/report.html`** in any web browser (double-click it in your file 
    whether busy days follow busy days.
 3. **H6** — whether filling in missing alert end times with each oblast's median duration beats "+30 minutes".
 4. **Test results** — the model vs the two simple rules, by days ahead and by oblast; then "When: hourly alert
-   chances" — the Brier score table and a calibration table ("when we said X %, how often was there an alert?").
+   chances" — the Brier score table and a calibration table ("when we said X %, how often was there an alert?");
+   then "Details checks" — the 2-hour windows' calibration and how well recent durations predicted real ones.
 5. **Forecast** — expected alerts per day, a heatmap of the chance of an alert in each hour of the first day, and the
    quietest / riskiest 2-hour slots.
 
@@ -199,7 +200,7 @@ python3 run.py --for 2026-10-14 --details         # all oblasts
 - **Alert durations** — from alerts of the last 28 days before the forecast moment that have a real "all clear"
   message: *typical* (half the alerts are shorter), *most last* (the middle 80 %), *shortest*, *average*,
   *longest*. A note appears when a few very long records (often a missing "all clear") pull the average up.
-  This is recent history, not a model.
+  This is recent history, not a model; how well it predicts is in the report (Step 4, "Details checks").
 - In the menu, after a forecast for all oblasts: "Show details for all oblasts? [y/N]".
 - The CSV also has `made_on`: the day the forecast was made (its start).
 

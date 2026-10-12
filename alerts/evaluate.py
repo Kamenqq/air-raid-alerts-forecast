@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 
 from .config import OBLASTS, TEST_DAYS
-from .features import blended_chance, forecast_chance, hourly_chance
+from .details import WINDOWS
+from .features import blended_chance, blended_slot_chances, forecast_chance, hourly_chance
 from .model import predict, train
 
 
@@ -68,16 +69,20 @@ def chance_scores(bt, cube, days, leads=(1, 7)):
     return scores.pivot_table(index="lead_days", columns="method", values="brier")[["flat", "hourly", "shown"]]
 
 
-def calibration(bt, cube, days, lead=1):
-    """When the forecast said 30-40%, how often was an alert really active? Shown chances in 10% bins."""
+def calibration(bt, cube, days, lead=1, two_hour=False):
+    """When the forecast said 30-40%, how often was an alert really active? Shown chances in 10% bins, for
+    each hour, or (two_hour) for each fixed 2-hour window 00-02 ... 22-00."""
     predicted, observed = [], []
     for r in bt[bt["lead_days"] == lead].itertuples():
-        chance = blended_chance(cube, days, OBLASTS[r.oblast], r.t0)
+        oblast = OBLASTS[r.oblast]
+        chance = (blended_slot_chances(cube, days, oblast, r.t0, 2)[WINDOWS] if two_hour
+                  else blended_chance(cube, days, oblast, r.t0))
         predicted.append(forecast_chance(chance, r.lead_days, r.pred, r.cnt_28d))
-        observed.append(cube[r.oblast, days.get_loc(r.target_day)])
+        seen = cube[r.oblast, days.get_loc(r.target_day)]
+        observed.append(seen.reshape(12, 2).any(axis=1) if two_hour else seen)
     labels = [f"{10 * i}–{10 * (i + 1)}%" for i in range(10)]
     pairs = pd.DataFrame({"predicted": np.concatenate(predicted), "observed": np.concatenate(observed).astype(float)})
     pairs["bin"] = pd.cut(pairs["predicted"], np.linspace(0, 1, 11), labels=labels, include_lowest=True)
     table = pairs.groupby("bin", observed=True).agg(predicted=("predicted", "mean"), observed=("observed", "mean"),
                                                    hours=("observed", "size"))
-    return table
+    return table.rename(columns={"hours": "windows"}) if two_hour else table

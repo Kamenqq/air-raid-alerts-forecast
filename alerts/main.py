@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from . import config as C
-from .details import DURATION_COLUMNS, WINDOW_COLUMNS, WINDOWS, durations, minutes_text
+from .details import DURATION_COLUMNS, WINDOW_COLUMNS, WINDOWS, duration_check, durations, minutes_text
 from .episodes import daily_counts, episode_starts, impute_naive, merge_episodes, naive_medians
 from .evaluate import backtest, bias, calibration, chance_scores, mae_table, naive_check, test_period
 from .features import active_cube, blended_chance, blended_slot_chances, forecast_chance, make_rows, tg_daily
@@ -255,6 +255,8 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None,
     scores = chance_scores(bt, state["cube"], state["days"])
     chosen = "shown"
     cal = calibration(bt, state["cube"], state["days"])
+    window_cal = calibration(bt, state["cube"], state["days"], two_hour=True)
+    dur_table, inside = duration_check(inputs["vol"], days)
     summary = (f"On {days[0].date()}–{days[-1].date()} the model misses by {overall.loc[0, 'model']:.2f} alerts per "
                f"oblast-day on average (best baseline: {overall.loc[0, ['b1', 'b2']].min():.2f}; skill "
                f"{skill_text(overall.loc[0, 'skill_vs_best'])}). Bias {model_bias:+.2f} alerts/day. "
@@ -303,7 +305,15 @@ def run_evaluation(inputs, state, n_days=C.MAX_LEAD, slot=None, slot_label=None,
            "2026-08-16…09-12); <b>flat</b> = the same chance every hour; <b>hourly</b> = each hour's own "
            "28-day share.</p>" + table_html(scores, 3)
          + f"<p class='note'>Calibration ({chosen}, 1 day ahead): when we said X%, how often was there an alert?</p>"
-         + table_html(cal, 2)),
+         + table_html(cal, 2)
+         + "<h3>Details checks (measured once on the test period; nothing was changed because of them)</h3>"
+           "<p class='note'>2-hour windows (00–02 … 22–00), 1 day ahead: when we said X%, how often was there "
+           "an alert at some moment in the window?</p>" + table_html(window_cal, 2)
+         + "<p class='note'>Alert durations: each test-period alert with a real end, its duration predicted at "
+           "00:00 Kyiv of its day. Mean absolute error in minutes (lower is better):</p>"
+         + table_html(dur_table.set_index("method"), 1)
+         + f"<p class='note'>Share of these alerts inside the usual range (10–90%) of the last 28 days: "
+           f"{inside:.0%} (ideal ≈ 80%).</p>"),
         (f"5. Forecast from {fc_start.date()}",
          table_html(fc.pivot(index="oblast", columns="day", values="expected"), 1)
          + figure_html(heatmap(chance_map, f"Chance of an alert in each Kyiv hour, {fc['day'].min()} (%)", "%"))
