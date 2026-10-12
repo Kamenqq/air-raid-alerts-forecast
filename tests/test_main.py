@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from alerts.main import check_start, parse_start, peak_hours_text
+from alerts.main import check_start, parse_slot, parse_start
 
 
 class StartDateTest(unittest.TestCase):
@@ -19,24 +19,6 @@ class StartDateTest(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 check_start(pd.Timestamp(bad), end_day)
             self.assertIn("between 2026-01-01 and 2026-10-11", str(ctx.exception.code))
-
-
-class PeakHoursTest(unittest.TestCase):
-    def test_top_three_hours_in_order(self):
-        profile = np.zeros(24)
-        profile[[23, 2, 19]] = [0.5, 0.3, 0.2]
-        self.assertEqual(peak_hours_text(profile), "02:00, 19:00, 23:00")
-
-    def test_no_recent_alerts_gives_dash(self):
-        self.assertEqual(peak_hours_text(np.full(24, 1 / 24)), "—")
-
-
-class WindowTextTest(unittest.TestCase):
-    def test_text(self):
-        from alerts.main import window_text
-        self.assertEqual(window_text((22, 2)), "22:00–00:00")
-        self.assertEqual(window_text((16, 5)), "16:00–21:00")
-        self.assertEqual(window_text(None), "—")
 
 
 class TargetTest(unittest.TestCase):
@@ -128,3 +110,33 @@ class SmallFixesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(M.C, "REPORTS_DIR", Path(tmp)):
             path = M.save_forecast(pd.DataFrame({"main": ["16:00–21:00"]}), pd.Timestamp("2026-10-12"))
             self.assertTrue(path.read_bytes().startswith(b"\xef\xbb\xbf"))  # UTF-8 mark Excel needs
+
+
+class SlotTest(unittest.TestCase):
+    def test_parse_slot(self):
+        self.assertEqual(parse_slot("08:00-09:30"), [8, 9])
+        self.assertEqual(parse_slot("08:00-10:00"), [8, 9])
+        self.assertEqual(parse_slot("23:00-01:00"), [23, 0])
+        self.assertEqual(parse_slot("8:15-8:45"), [8])
+        for bad in ("09:00-09:00", "25:00-26:00", "evening"):
+            with self.assertRaises(SystemExit):
+                parse_slot(bad)
+
+
+class ForecastOutputTest(unittest.TestCase):
+    def test_hourly_chances_slots_and_slot_query(self):
+        import alerts.main as M
+        fc = M.forecast(small_state(), pd.Timestamp("2026-01-10"), 2, slot=[8, 9])
+        for column in ["chance_00", "chance_23", "quietest_2h", "riskiest_2h", "slot_chance"]:
+            self.assertIn(column, fc.columns)
+        kyiv = fc[fc["oblast"] == "Kyiv City"].iloc[0]
+        hours = [kyiv[f"chance_{h:02d}"] for h in range(24)]
+        self.assertEqual(int(np.argmax(hours)), 10)        # an alert starts at 10:00 Kyiv every day
+        self.assertTrue(0 <= kyiv["slot_chance"] <= 1)
+        from alerts.features import blended_chance        # day 2: same chances, no count scaling
+        state = small_state()
+        day2 = fc[(fc["oblast"] == "Kyiv City") & (fc["day"] == fc["day"].max())].iloc[0]
+        expected = blended_chance(state["cube"], state["days"], "Kyiv City", pd.Timestamp("2026-01-10"))
+        np.testing.assert_allclose([day2[f"chance_{h:02d}"] for h in range(24)], expected)
+        quiet = fc[fc["oblast"] == "Lvivska oblast"].iloc[0]
+        self.assertEqual(quiet["quietest_2h"], "—")       # no alerts at all in its history

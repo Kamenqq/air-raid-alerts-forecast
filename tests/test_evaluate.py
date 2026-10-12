@@ -4,7 +4,7 @@ from unittest import mock
 import pandas as pd
 
 from alerts import model as model_module
-from alerts.evaluate import backtest, bias, mae_table, naive_check, peak_hit_rate, test_period
+from alerts.evaluate import backtest, bias, calibration, chance_scores, mae_table, naive_check, test_period
 from tests.helpers import synthetic_rows
 
 
@@ -33,13 +33,6 @@ class EvaluateTest(unittest.TestCase):
         bt = pd.DataFrame({"actual": [0, 0], "pred": [0.1, 0.1], "b1": [0, 0], "b2": [0, 0]})
         self.assertTrue(pd.isna(mae_table(bt).loc[0, "skill_vs_best"]))
 
-    def test_peak_hit_rate(self):
-        starts = pd.DataFrame({"oblast": ["Kyiv City"] * 4, "hour": [22, 23, 21, 5],
-                               "day": pd.to_datetime(["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-10"])})
-        self.assertEqual(peak_hit_rate(starts, pd.DatetimeIndex(["2026-03-10"])), 0.0)
-        starts.loc[3, "hour"] = 22
-        self.assertEqual(peak_hit_rate(starts, pd.DatetimeIndex(["2026-03-10"])), 1.0)
-
     def test_naive_check(self):
         vol = pd.DataFrame({"oblast": ["Kyiv City", "Kyiv City"], "naive": [False, True],
                             "start": pd.to_datetime(["2026-01-05 10:00", "2026-01-06 10:00"]),
@@ -49,12 +42,28 @@ class EvaluateTest(unittest.TestCase):
         self.assertEqual(list(table["alerts"]), [1, 1])
 
 
-class WindowCoverageTest(unittest.TestCase):
-    def test_coverage_and_length(self):
-        from alerts.evaluate import window_coverage
-        history = pd.DataFrame({"oblast": ["Kyiv City"] * 4, "hour": [22, 22, 23, 23],
-                                "day": pd.to_datetime(["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"])})
-        test_day = pd.DataFrame({"oblast": ["Kyiv City"] * 2, "hour": [22, 5], "day": pd.to_datetime(["2026-03-10"] * 2)})
-        coverage, hours = window_coverage(pd.concat([history, test_day], ignore_index=True), pd.DatetimeIndex(["2026-03-10"]))
-        self.assertEqual(coverage, 0.5)  # predicted window 22:00-23:00 (1 hour) catches 1 of 2
-        self.assertEqual(hours, 1.0)
+
+
+class ChanceScoreTest(unittest.TestCase):
+    def setUp(self):
+        import numpy as np
+        from alerts.config import OBLASTS
+        self.days = pd.date_range("2026-03-01", periods=40)
+        self.cube = np.zeros((len(OBLASTS), 40, 24), dtype=bool)
+        self.cube[0, :31, 22] = True        # Cherkaska: hour 22 on every day, incl. the test day
+        self.bt = pd.DataFrame({"oblast": [0], "t0": [self.days[30]], "target_day": [self.days[30]],
+                                "lead_days": [1], "pred": [1.0], "cnt_28d": [1.0]})
+
+    def test_brier_scores(self):
+        scores = chance_scores(self.bt, self.cube, self.days, leads=(1,))
+        self.assertAlmostEqual(scores.loc[1, "hourly"], 0.0)              # predicted 100% at 22, 0% elsewhere
+        flat = ((1 - 1 / 24) ** 2 + 23 * (1 / 24) ** 2) / 24              # "every hour the same" baseline
+        self.assertAlmostEqual(scores.loc[1, "flat"], flat)
+        at_22, elsewhere = 0.5 + 0.5 / 24, 0.5 / 24                       # shown = half pattern, half flat
+        self.assertAlmostEqual(scores.loc[1, "shown"], ((1 - at_22) ** 2 + 23 * elsewhere ** 2) / 24)
+
+    def test_calibration_table(self):
+        table = calibration(self.bt, self.cube, self.days)
+        self.assertEqual(int(table["hours"].sum()), 24)
+        self.assertEqual(table.loc["50–60%", "observed"], 1.0)           # hour 22 shown as ~52%
+        self.assertEqual(table.loc["0–10%", "observed"], 0.0)

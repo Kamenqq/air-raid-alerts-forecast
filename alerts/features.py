@@ -3,7 +3,7 @@ Every statistic for day t0 uses only days before t0 (shift(1)); the leakage test
 import numpy as np
 import pandas as pd
 
-from .config import MAX_LEAD, OBLASTS, to_kyiv
+from .config import CHANCE_SHRINK, CHANCE_WINDOW, MAX_LEAD, OBLASTS, to_kyiv
 from .parse import TG_COLUMNS, THREAT_PATTERNS
 
 FEATURES = (["oblast", "lead_days", "weekday", "cnt_1d", "cnt_7d", "cnt_28d", "cnt_same_wd",
@@ -96,23 +96,63 @@ def make_rows(daily, tg, t0_days, leads=range(1, MAX_LEAD + 1)):
     return pd.concat(parts, ignore_index=True)
 
 
-def hourly_profile(starts, oblast, t0, window=28):
-    """Share of the oblast's episode starts in each Kyiv hour over the `window` days before t0."""
-    t0 = pd.Timestamp(t0)
-    recent = starts[(starts["oblast"] == oblast) & (starts["day"] < t0)
-                    & (starts["day"] >= t0 - pd.Timedelta(days=window))]
-    counts = np.bincount(recent["hour"].to_numpy(dtype=int), minlength=24).astype(float)
-    return counts / counts.sum() if counts.sum() else np.full(24, 1 / 24)
+def active_cube(episodes, days):
+    """True where an alert was active at some moment of that Kyiv hour: array [oblast, day, hour]."""
+    cube = np.zeros((len(OBLASTS), len(days), 24), dtype=bool)
+    if episodes.empty:
+        return cube
+    first_hour = to_kyiv(episodes["start"]).dt.floor("h")
+    last_hour = to_kyiv(episodes["end"] - pd.Timedelta(microseconds=1)).dt.floor("h")
+    last_hour = last_hour.where(last_hour >= first_hour, first_hour)  # a zero-length alert still marks its hour
+    first = ((first_hour - days[0]) // pd.Timedelta(hours=1)).to_numpy()
+    count = ((last_hour - first_hour) // pd.Timedelta(hours=1)).to_numpy() + 1
+    hours = np.concatenate([np.arange(f, f + c) for f, c in zip(first, count)])
+    oblast = np.repeat(episodes["oblast"].map({o: i for i, o in enumerate(OBLASTS)}).to_numpy(), count)
+    inside = (hours >= 0) & (hours < len(days) * 24)
+    cube[oblast[inside], hours[inside] // 24, hours[inside] % 24] = True
+    return cube
 
 
-def main_window(profile, share=0.5):
-    """Shortest continuous span of hours (may cross midnight) expected to hold at least `share`
-    of the oblast's alerts; among equally short spans, the one holding the most.
-    Returns (start_hour, hours), or None for a flat profile (no recent alerts)."""
-    if np.allclose(profile, profile[0]):
-        return None
-    doubled = np.concatenate([profile, profile])  # lets a window run past midnight
-    for hours in range(1, 25):
-        sums = np.array([doubled[start:start + hours].sum() for start in range(24)])
-        if sums.max() >= share - 1e-9:
-            return int(sums.argmax()), hours
+def hourly_chance(cube, days, oblast, t0, window=28):
+    """Chance of an alert being active at some moment of each Kyiv hour: the share of the `window`
+    days before t0 on which it was."""
+    i = days.get_loc(pd.Timestamp(t0))
+    return cube[OBLASTS.index(oblast), max(0, i - window):i].mean(axis=0)
+
+
+def slot_chance(cube, days, oblast, t0, hours, window=28):
+    """Chance of an alert at some moment during a time slot (a list of Kyiv hours, may cross midnight)."""
+    i = days.get_loc(pd.Timestamp(t0))
+    return float(cube[OBLASTS.index(oblast), max(0, i - window):i][:, hours].any(axis=1).mean())
+
+
+def scale_chance(chance, factor):
+    """Option 2: on a day `factor` times busier than usual, the chance of NO alert is raised to that power."""
+    return 1 - (1 - chance) ** factor
+
+
+def blend(chances):
+    """Half the oblast's own pattern, half its flat level: per-hour estimates alone are too noisy."""
+    return CHANCE_SHRINK * chances + (1 - CHANCE_SHRINK) * np.mean(chances)
+
+
+def blended_chance(cube, days, oblast, t0):
+    """The hourly alert chances shown in the forecast (before the 1-day-ahead count scaling)."""
+    return blend(hourly_chance(cube, days, oblast, t0, window=CHANCE_WINDOW))
+
+
+def blended_slot_chances(cube, days, oblast, t0, length):
+    """Chance of an alert in a slot of `length` hours starting at each hour 0..23, blended like the hours."""
+    starts = [[(start + j) % 24 for j in range(length)] for start in range(24)]
+    return blend(np.array([slot_chance(cube, days, oblast, t0, hours, window=CHANCE_WINDOW) for hours in starts]))
+
+
+def count_factor(pred, cnt_28d):
+    """How much busier the forecast day is than the oblast's 28-day average."""
+    return pred / cnt_28d if cnt_28d > 0 else 1.0
+
+
+def forecast_chance(chance, lead, pred, cnt_28d):
+    """Scale by the predicted count only for 1 day ahead: further ahead the count forecast is too
+    uncertain and scaling made the chances worse on the validation period."""
+    return scale_chance(chance, count_factor(pred, cnt_28d)) if lead == 1 else chance

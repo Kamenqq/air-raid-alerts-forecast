@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 from .config import OBLASTS, TEST_DAYS
-from .features import hourly_profile, main_window
+from .features import blended_chance, forecast_chance, hourly_chance
 from .model import predict, train
 
 
@@ -41,18 +41,6 @@ def bias(bt):
     return float((bt["pred"] - bt["actual"]).mean())
 
 
-def peak_hit_rate(starts, days):
-    """Share of real episode starts on the test days that fell in the predicted top-3 hours."""
-    hits = total = 0
-    for day in days:
-        for oblast in OBLASTS:
-            top3 = np.argsort(hourly_profile(starts, oblast, day))[-3:]
-            hours = starts.loc[(starts["oblast"] == oblast) & (starts["day"] == day), "hour"]
-            hits += int(hours.isin(top3).sum())
-            total += len(hours)
-    return hits / total if total else float("nan")
-
-
 def naive_check(vol, medians, start, end):
     """H6: hide the real end of non-naive alerts and compare '+30 min' with the per-oblast median."""
     real = vol[~vol["naive"] & (vol["start"] >= start) & (vol["start"] < end)]
@@ -65,19 +53,31 @@ def naive_check(vol, medians, start, end):
     })
 
 
-def window_coverage(starts, days):
-    """Share of real alert starts on the test days that fell inside the predicted 'half of the alerts'
-    window (target: about 50%), and the mean window length in hours. Oblasts with no window are skipped."""
-    hits = total = 0
-    lengths = []
-    for day in days:
-        for oblast in OBLASTS:
-            window = main_window(hourly_profile(starts, oblast, day))
-            if window is None:
-                continue
-            start, hours = window
-            lengths.append(hours)
-            real = starts.loc[(starts["oblast"] == oblast) & (starts["day"] == day), "hour"]
-            hits += int(((real - start) % 24 < hours).sum())
-            total += len(real)
-    return (hits / total if total else float("nan"), float(np.mean(lengths)) if lengths else float("nan"))
+def chance_scores(bt, cube, days, leads=(1, 7)):
+    """Brier score (mean squared gap between chance and what happened, 0 or 1) of hourly alert chances
+    for the backtest's forecasts: 'flat' (same chance every hour, last 28 days), 'hourly' (each hour's own
+    28-day share), 'shown' (what the forecast shows). Lower is better. Uses each forecast's own t0."""
+    rows = []
+    for r in bt[bt["lead_days"].isin(leads)].itertuples():
+        chance = hourly_chance(cube, days, OBLASTS[r.oblast], r.t0)
+        observed = cube[r.oblast, days.get_loc(r.target_day)]
+        shown = forecast_chance(blended_chance(cube, days, OBLASTS[r.oblast], r.t0), r.lead_days, r.pred, r.cnt_28d)
+        variants = {"flat": np.full(24, chance.mean()), "hourly": chance, "shown": shown}
+        rows += [(r.lead_days, name, float(((p - observed) ** 2).mean())) for name, p in variants.items()]
+    scores = pd.DataFrame(rows, columns=["lead_days", "method", "brier"])
+    return scores.pivot_table(index="lead_days", columns="method", values="brier")[["flat", "hourly", "shown"]]
+
+
+def calibration(bt, cube, days, lead=1):
+    """When the forecast said 30-40%, how often was an alert really active? Shown chances in 10% bins."""
+    predicted, observed = [], []
+    for r in bt[bt["lead_days"] == lead].itertuples():
+        chance = blended_chance(cube, days, OBLASTS[r.oblast], r.t0)
+        predicted.append(forecast_chance(chance, r.lead_days, r.pred, r.cnt_28d))
+        observed.append(cube[r.oblast, days.get_loc(r.target_day)])
+    labels = [f"{10 * i}–{10 * (i + 1)}%" for i in range(10)]
+    pairs = pd.DataFrame({"predicted": np.concatenate(predicted), "observed": np.concatenate(observed).astype(float)})
+    pairs["bin"] = pd.cut(pairs["predicted"], np.linspace(0, 1, 11), labels=labels, include_lowest=True)
+    table = pairs.groupby("bin", observed=True).agg(predicted=("predicted", "mean"), observed=("observed", "mean"),
+                                                   hours=("observed", "size"))
+    return table

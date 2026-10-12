@@ -29,6 +29,10 @@ AIR_ALERT_SINCE = pd.Timestamp("2026-08-25")   # air_alert_ua posts kept from he
 AIR_ALERT_UNTIL = pd.Timestamp("2026-09-08")   # channel stopped posting on 2026-09-07
 TEST_DAYS = 28
 MAX_LEAD = 7
+# Hourly alert chances (chosen on the validation period 2026-08-16..09-12): half the oblast's own hourly
+# pattern + half its flat level, over the last 56 days; scaled by the predicted count only for 1 day ahead.
+CHANCE_WINDOW = 56
+CHANCE_SHRINK = 0.5
 
 
 def to_kyiv(utc):
