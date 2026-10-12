@@ -7,8 +7,47 @@ from .config import MAX_LEAD, OBLASTS, to_kyiv
 from .parse import TG_COLUMNS, THREAT_PATTERNS
 
 FEATURES = (["oblast", "lead_days", "weekday", "cnt_1d", "cnt_7d", "cnt_28d", "cnt_same_wd",
-             "nat_1d", "nat_7d", "tg_mention_1d", "tg_mention_7d"]
+             "nat_1d", "nat_7d", "nb_1d", "nb_7d", "tg_mention_1d", "tg_mention_7d"]
             + [f"tg_{group}_{window}" for group in THREAT_PATTERNS for window in ("1d", "7d")])
+
+
+# H4: oblasts sharing a border (Luhansk and Crimea excluded; Kyiv City lies inside Kyivska oblast).
+NEIGHBOURS = {
+    "Cherkaska oblast": ["Kyivska oblast", "Poltavska oblast", "Kirovohradska oblast", "Vinnytska oblast"],
+    "Chernihivska oblast": ["Kyivska oblast", "Sumska oblast", "Poltavska oblast"],
+    "Chernivetska oblast": ["Ivano-Frankivska oblast", "Ternopilska oblast", "Khmelnytska oblast",
+                            "Vinnytska oblast"],
+    "Dnipropetrovska oblast": ["Poltavska oblast", "Kharkivska oblast", "Donetska oblast", "Zaporizka oblast",
+                               "Khersonska oblast", "Mykolaivska oblast", "Kirovohradska oblast"],
+    "Donetska oblast": ["Kharkivska oblast", "Dnipropetrovska oblast", "Zaporizka oblast"],
+    "Ivano-Frankivska oblast": ["Lvivska oblast", "Zakarpatska oblast", "Chernivetska oblast", "Ternopilska oblast"],
+    "Kharkivska oblast": ["Sumska oblast", "Poltavska oblast", "Dnipropetrovska oblast", "Donetska oblast"],
+    "Khersonska oblast": ["Mykolaivska oblast", "Dnipropetrovska oblast", "Zaporizka oblast"],
+    "Khmelnytska oblast": ["Rivnenska oblast", "Zhytomyrska oblast", "Vinnytska oblast", "Chernivetska oblast",
+                           "Ternopilska oblast"],
+    "Kirovohradska oblast": ["Cherkaska oblast", "Poltavska oblast", "Dnipropetrovska oblast", "Mykolaivska oblast",
+                             "Odeska oblast", "Vinnytska oblast"],
+    "Kyiv City": ["Kyivska oblast"],
+    "Kyivska oblast": ["Kyiv City", "Zhytomyrska oblast", "Vinnytska oblast", "Cherkaska oblast",
+                       "Poltavska oblast", "Chernihivska oblast"],
+    "Lvivska oblast": ["Volynska oblast", "Rivnenska oblast", "Ternopilska oblast", "Ivano-Frankivska oblast",
+                       "Zakarpatska oblast"],
+    "Mykolaivska oblast": ["Odeska oblast", "Kirovohradska oblast", "Dnipropetrovska oblast", "Khersonska oblast"],
+    "Odeska oblast": ["Mykolaivska oblast", "Kirovohradska oblast", "Vinnytska oblast"],
+    "Poltavska oblast": ["Chernihivska oblast", "Sumska oblast", "Kharkivska oblast", "Dnipropetrovska oblast",
+                         "Kirovohradska oblast", "Cherkaska oblast", "Kyivska oblast"],
+    "Rivnenska oblast": ["Volynska oblast", "Lvivska oblast", "Ternopilska oblast", "Khmelnytska oblast",
+                         "Zhytomyrska oblast"],
+    "Sumska oblast": ["Chernihivska oblast", "Poltavska oblast", "Kharkivska oblast"],
+    "Ternopilska oblast": ["Lvivska oblast", "Rivnenska oblast", "Khmelnytska oblast", "Chernivetska oblast",
+                           "Ivano-Frankivska oblast"],
+    "Vinnytska oblast": ["Zhytomyrska oblast", "Kyivska oblast", "Cherkaska oblast", "Kirovohradska oblast",
+                         "Odeska oblast", "Chernivetska oblast", "Khmelnytska oblast"],
+    "Volynska oblast": ["Lvivska oblast", "Rivnenska oblast"],
+    "Zakarpatska oblast": ["Lvivska oblast", "Ivano-Frankivska oblast"],
+    "Zaporizka oblast": ["Dnipropetrovska oblast", "Donetska oblast", "Khersonska oblast"],
+    "Zhytomyrska oblast": ["Rivnenska oblast", "Khmelnytska oblast", "Vinnytska oblast", "Kyivska oblast"],
+}
 
 
 def tg_daily(flags, days):
@@ -44,6 +83,8 @@ def make_rows(daily, tg, t0_days, leads=range(1, MAX_LEAD + 1)):
                 "cnt_same_wd": same_weekday[oblast].reindex(target_days).to_numpy(),
                 "nat_1d": nat_1d.reindex(t0_days).to_numpy(),
                 "nat_7d": nat_7d.reindex(t0_days).to_numpy(),
+                "nb_1d": cnt_1d[NEIGHBOURS[oblast]].mean(axis=1).reindex(t0_days).to_numpy(),  # H4
+                "nb_7d": cnt_7d[NEIGHBOURS[oblast]].mean(axis=1).reindex(t0_days).to_numpy(),
                 "tg_mention_1d": tg_1d[f"m_{oblast}"].reindex(t0_days).to_numpy(),
                 "tg_mention_7d": tg_7d[f"m_{oblast}"].reindex(t0_days).to_numpy(),
             })

@@ -32,6 +32,12 @@ Submission: (1) GitHub repo with working code, (2) full AI conversation log,
 - **"When" outputs:** top-3 peak hours, and the **main window** = shortest continuous span of hours (may cross
   midnight) expected to hold ≥ 50% of the day's alerts. Checked by coverage (target 50%) and mean length.
 - Naive alerts (no end message): end = start + per-oblast median duration (user's revised H6).
+- **Decisions 2026-10-12 (round 2):** (1) H4 approved — add neighbouring-oblast features (border table +
+  neighbours' yesterday / 7-day averages). (2) "When" for a resident planning the day (mall trip, commute):
+  replace the main window with the **chance that an alert is active in each hour / any time slot**, from recent
+  history (option 1), and test **scaling it by the predicted daily count** (option 2). Option 3 (separate hourly
+  model) deferred — **remind the user to reconsider it if the deadline allows**. (3) Decide what to keep on a
+  **validation period = the 28 days before the test period**, then report the test period once.
 - Count model: `HistGradientBoostingRegressor(loss="poisson")`, retrained for each forecast time, no tuning.
   Baselines: last-7-days mean; same weekday last week. Metrics: MAE, skill vs best baseline, bias,
   peak-hour hit rate, main-window coverage and length. Test = last 28 full days of the snapshot.

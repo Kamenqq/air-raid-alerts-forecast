@@ -95,3 +95,25 @@ class MainWindowTest(unittest.TestCase):
     def test_flat_profile_has_no_window(self):
         from alerts.features import main_window
         self.assertIsNone(main_window(np.full(24, 1 / 24)))
+
+
+class NeighboursTest(unittest.TestCase):
+    def test_table_is_complete_and_symmetric(self):
+        from alerts.features import NEIGHBOURS
+        self.assertEqual(set(NEIGHBOURS), set(OBLASTS))
+        for oblast, neighbours in NEIGHBOURS.items():
+            self.assertNotIn(oblast, neighbours)
+            for other in neighbours:
+                self.assertIn(oblast, NEIGHBOURS[other], f"{oblast} -> {other} is not mutual")
+        self.assertEqual(NEIGHBOURS["Kyiv City"], ["Kyivska oblast"])
+
+    def test_neighbour_features(self):
+        days = pd.date_range("2026-03-01", "2026-04-30")
+        daily = pd.DataFrame(0.0, index=days, columns=OBLASTS)
+        daily.loc["2026-04-09", "Kyiv City"] = 6       # both border Kyivska oblast (6 neighbours in total)
+        daily.loc["2026-04-09", "Zhytomyrska oblast"] = 4
+        tg = tg_daily(chomu_flags(pd.DataFrame({"time": [], "text": []})), days)
+        row = make_rows(daily, tg, [pd.Timestamp("2026-04-10")], leads=[1])
+        kyivska = row[row["oblast"] == OBLASTS.index("Kyivska oblast")].iloc[0]
+        self.assertAlmostEqual(kyivska["nb_1d"], 10 / 6)
+        self.assertAlmostEqual(kyivska["nb_7d"], (10 / 7) / 6)
