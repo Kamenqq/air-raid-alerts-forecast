@@ -36,7 +36,7 @@ prints a 7-day forecast and writes the outputs to the `reports/` folder (`report
 
 Requirements: Python 3.9+ on macOS, Linux or Windows. Fallback if `.venv` cannot be created
 (e.g. Debian/Ubuntu without `python3-venv`): `pip install -r requirements.txt`, then `python -m alerts.main`.
-CI runs the tests and the full app on Ubuntu, macOS and Windows with Python 3.9 and 3.13.
+CI runs the tests and the full app on Ubuntu, macOS and Windows with Python 3.9, 3.13, 3.14 and 3.15.
 
 Example output (forecast made for 2026-10-11):
 
